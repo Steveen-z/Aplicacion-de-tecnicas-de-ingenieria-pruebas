@@ -115,6 +115,13 @@ model Publicacion {
   fechaPublicacion   DateTime @default(now()) @map("fecha_publicacion") @db.Timestamptz(6)
   fechaActualizacion DateTime @default(now()) @updatedAt @map("fecha_actualizacion") @db.Timestamptz(6)
   motivoRechazo      String?  @map("motivo_rechazo")
+  /// CASA | LOTE | TERRENO (migracion 003). Los campos de casa solo existen si es CASA.
+  tipoPropiedad      String   @map("tipo_propiedad") @db.VarChar(10)
+  habitaciones       Int?     @db.SmallInt
+  banos              Int?     @db.SmallInt
+  areaConstruidaM2   Decimal? @map("area_construida_m2") @db.Decimal(10, 2)
+  niveles            Int?     @db.SmallInt
+  estacionamientos   Int?     @db.SmallInt
 
   vendedor       Vendedor              @relation(fields: [idVendedor], references: [id], onDelete: Restrict)
   terreno        Terreno?

@@ -4,7 +4,7 @@
 
 ## Descripción
 
-InmobiSV es una plataforma para publicar, buscar, comparar y contactar vendedores de terrenos en El Salvador. Este repositorio contiene el backend (API REST): registro y sesiones, cambio de rol cliente→vendedor, publicaciones con fotografías y historial de precios, filtros, favoritos, comparación de terrenos, notificaciones y verificación de vendedores. La interacción se hace desde el frontend o, para demostración, desde Swagger en `/api/docs`.
+InmobiSV es una plataforma para publicar, buscar, comparar y contactar vendedores de inmuebles (casas, lotes y terrenos) en El Salvador. Este repositorio contiene el backend (API REST): registro y sesiones, cambio de rol cliente→vendedor, publicaciones con fotografías y historial de precios, filtros, favoritos, comparación de terrenos, notificaciones y verificación de vendedores. La interacción se hace desde el frontend o, para demostración, desde Swagger en `/api/docs`.
 
 ## Tecnologías
 
@@ -98,14 +98,14 @@ Numeración de procesos según el documento Lab3.
 | P02 Registrar cliente | `POST /auth/registro/cliente` | Público |
 | Sesión | `POST /auth/login`, `/auth/logout`, `/auth/refresh`, `GET /auth/me` | Público / autenticado |
 | P03 Cambio de rol | `POST /cambio-rol/solicitudes` (`dui`, `numeroWhatsapp?`, `telefono?`), `GET /cambio-rol/solicitudes` | CLIENTE |
-| P04 Consultar / P05 Filtrar | `GET /publicaciones` (filtros: `departamento`, `municipio`, `tipoOperacion`, `precioMin/Max`, `areaMin/Max`, `q`, `orden`, `page`, `limit`; **cercanía**: `lat`, `lng`, `radioKm` (0,1–50) juntos y `orden=DISTANCIA`). Cada item trae `latitud`/`longitud` públicas (aproximadas, para el mapa) y `distanciaKm` | Público |
+| P04 Consultar / P05 Filtrar | `GET /publicaciones` (filtros: `departamento`, `municipio`, `tipoOperacion`, `precioMin/Max`, `areaMin/Max`, `q`, `tipoPropiedad`, `habitacionesMin`/`banosMin` (solo casas), `orden`, `page`, `limit`; **cercanía**: `lat`, `lng`, `radioKm` (0,1–50) juntos y `orden=DISTANCIA`). Cada item trae `latitud`/`longitud` públicas (aproximadas, para el mapa) y `distanciaKm` | Público |
 | P06 Detalle y ubicación | `GET /publicaciones/:id`, `GET /publicaciones/:id/historial-precios` | Público (exactas solo dueño/admin) |
 | P07 Contacto WhatsApp | `GET /publicaciones/:id/whatsapp` | Autenticado |
-| P08 Publicar | `POST /publicaciones`, fotografías (`POST/DELETE /publicaciones/:id/fotografias…`, `PATCH …/portada`) | VENDEDOR |
+| P08 Publicar | `POST /publicaciones` (`tipoPropiedad`: `CASA`/`LOTE`/`TERRENO`, por defecto TERRENO; una CASA exige `casa.habitaciones`, `casa.banos` y `casa.areaConstruidaM2`), fotografías (`POST/DELETE /publicaciones/:id/fotografias…`, `PATCH …/portada`) | VENDEDOR |
 | P09 Gestionar | `GET /publicaciones/mias`, `PATCH /publicaciones/:id`, `POST /publicaciones/:id/pausar｜reactivar｜marcar-vendida｜marcar-rentada` | VENDEDOR dueño |
 | P10 Favoritos | `GET /favoritos`, `POST /favoritos/:id/alternar`, `DELETE /favoritos/:id` | Autenticado |
 | P11 Precio y aviso de baja | `PATCH /publicaciones/:id/precio` | VENDEDOR dueño |
-| P12 Comparación | `POST /comparaciones` (2–4 ids, misma operación), `GET /comparaciones`, `GET /comparaciones/:id` | Usuario con perfil cliente |
+| P12 Comparación | `POST /comparaciones` (2–4 ids, misma operación y mismo tipo de inmueble), `GET /comparaciones`, `GET /comparaciones/:id` | Usuario con perfil cliente |
 | Notificaciones | `GET /notificaciones`, `GET /notificaciones/no-leidas/conteo`, `PATCH /notificaciones/leer-todas`, `PATCH /notificaciones/:id/leida` | Autenticado |
 | Archivos | `POST /archivos/imagenes` (campo `archivo`, JPG/PNG/WEBP ≤5 MB), `POST /archivos/documentos` (PDF/JPG/PNG ≤8 MB, privado) | VENDEDOR (imágenes también ADMIN) |
 | Verificación | `POST/GET /vendedores/me/documentos`; admin: `GET /admin/documentos`, `GET /admin/documentos/:id/archivo`, `PATCH /admin/documentos/:id/revision` | VENDEDOR / ADMIN |

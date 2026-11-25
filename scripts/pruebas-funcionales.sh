@@ -361,6 +361,36 @@ req GET "/admin/auditoria?desde=no-es-fecha" "$TOK_ADM"; B="$STATUS"
 check F37 "Auditoría: bloqueo, activación, rechazo, restauración y aprobación con actor admin; filtros; fechas ($A/$B)" \
   'echo "$TODAS" | jq -e "[.items[].accion] as \$a | ([\"USUARIO_BLOQUEADO\",\"USUARIO_ACTIVADO\",\"PUBLICACION_RECHAZADA\",\"PUBLICACION_RESTAURADA\",\"DOCUMENTO_APROBADO\"] - \$a | length) == 0 and all(.items[]; .actor.idUsuario == $ID_ADM)" >/dev/null && echo "$PUBS" | jq -e ".total == 2 and all(.items[]; .idEntidad == $PUB1)" >/dev/null && [ "$A" = 422 ] && [ "$B" = 400 ]'
 
+echo "== Fase 2: tipos de inmueble (casa, lote, terreno) =="
+casa_json() { # título precio habitaciones baños construida
+  jq -nc --arg t "$1" --argjson p "$2" --argjson h "$3" --argjson b "$4" --argjson c "$5" --arg url "$URL" '{
+    titulo: $t, descripcion: "Casa con cochera y patio trasero.", tipoOperacion: "VENTA", precio: $p,
+    tipoPropiedad: "CASA", casa: {habitaciones: $h, banos: $b, areaConstruidaM2: $c, niveles: 1, estacionamientos: 1},
+    terreno: {areaM2: 250},
+    ubicacion: {departamento: "San Miguel", municipio: "Municipio Prueba", latitud: 13.4833333, longitud: -88.1833333},
+    fotografias: [{urlImagen: $url}] }'
+}
+req POST /publicaciones "$TOK_VEN" "$(casa_json "Casa familiar $SUF" 95000 3 2 140)"; A="$STATUS"; CASA1="$(j .idPublicacion)"; CASA1_HAB="$(j .casa.habitaciones)"
+req POST /publicaciones "$TOK_VEN" "$(casa_json "Casa grande $SUF" 120000 4 3 180)"; CASA2="$(j .idPublicacion)"
+req POST /publicaciones "$TOK_VEN" "$(casa_json "Casa incompleta $SUF" 1000 3 2 100 | jq -c 'del(.casa.habitaciones)')"; B="$STATUS"
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Terreno con casa $SUF" VENTA 1000 "San Miguel" 100 "$URL" | jq -c '.casa={"habitaciones":2}')"; C="$STATUS"
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Lote urbano $SUF" VENTA 8000 "San Miguel" 200 "$URL" | jq -c '.tipoPropiedad="LOTE"')"; D="$STATUS"; LOTE="$(j .idPublicacion)"
+check F45 "Crear CASA completa ($A, $CASA1_HAB hab.); CASA sin habitaciones ($B); TERRENO con casa ($C); LOTE ($D) -> 201/422/422/201" \
+  '[ "$A" = 201 ] && [ "$CASA1_HAB" = 3 ] && [ "$B" = 422 ] && [ "$C" = 422 ] && [ "$D" = 201 ]'
+
+req GET "/publicaciones?tipoPropiedad=CASA&habitacionesMin=4&q=$SUF"; IDS="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"; OK1="$(echo "$BODY" | jq 'all(.items[]; .tipoPropiedad == "CASA" and .habitaciones >= 4)')"
+req GET "/publicaciones?tipoPropiedad=TERRENO&habitacionesMin=3"; A="$STATUS"
+req GET "/publicaciones?tipoPropiedad=LOTE&q=$SUF"; LOTES="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"
+check F46 "Filtro casas con ≥4 habitaciones ($IDS); habitacionesMin con TERRENO ($A) -> 422; filtro LOTE ($LOTES)" \
+  '[ "$OK1" = true ] && echo "$IDS" | jq -e "index($CASA2) != null and index($CASA1) == null" >/dev/null && [ "$A" = 422 ] && [ "$LOTES" = "[$LOTE]" ]'
+
+req POST /comparaciones "$TOK_CLI" "{\"idsPublicaciones\":[$CASA1,$PUB_MEDIO]}"; A="$STATUS"
+req POST /comparaciones "$TOK_CLI" "{\"idsPublicaciones\":[$CASA1,$CASA2]}"; B="$STATUS"; RES="$(echo "$BODY" | jq -c .resumen)"
+req PATCH "/publicaciones/$PUB_MEDIO" "$TOK_VEN" '{"casa":{"habitaciones":2}}'; C="$STATUS"
+req PATCH "/publicaciones/$CASA1" "$TOK_VEN" '{"tipoPropiedad":"LOTE"}'; D="$STATUS"
+check F47 "Comparar CASA con TERRENO ($A) / dos casas ($B, $RES); casa en un terreno ($C); cambiar tipo ($D) -> 422/201/422/400" \
+  '[ "$A" = 422 ] && [ "$B" = 201 ] && echo "$RES" | jq -e ".masHabitaciones == $CASA2 and .mayorAreaConstruida == $CASA2" >/dev/null && [ "$C" = 422 ] && [ "$D" = 400 ]'
+
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"
 [ "$FAIL" = 0 ]

@@ -3,6 +3,7 @@ import { BusinessRuleError } from '../../../shared/domain/errors';
 import { Pagina, crearPagina } from '../../../shared/domain/pagination';
 import { FiltroPublicaciones, PublicacionResumen } from '../domain/publicacion';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
+import { validarFiltroCasa } from '../domain/publicacion.rules';
 
 export interface ListarPublicacionesInput {
   filtro: FiltroPublicaciones;
@@ -27,6 +28,7 @@ export class ListarPublicacionesUseCase {
   async execute(input: ListarPublicacionesInput): Promise<ListadoPublicaciones> {
     const { filtro, page, limit } = input;
     this.validarRangos(filtro);
+    validarFiltroCasa(filtro);
 
     const { items, total } = await this.repo.buscarActivas(filtro, { page, limit });
 
@@ -35,7 +37,7 @@ export class ListarPublicacionesUseCase {
       sinResultados: total === 0,
       mensaje:
         total === 0
-          ? 'No encontramos terrenos con esos criterios. Prueba ampliando el rango de precio, el tamaño o la zona.'
+          ? 'No encontramos inmuebles con esos criterios. Prueba ampliando el rango de precio, el tamaño o la zona.'
           : null,
       invitarARegistrarse: !input.autenticado,
     };

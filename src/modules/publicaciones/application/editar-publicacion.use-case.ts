@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { BusinessRuleError } from '../../../shared/domain/errors';
-import { DatosTerreno, Publicacion } from '../domain/publicacion';
+import { DatosCasa, DatosTerreno, Publicacion } from '../domain/publicacion';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
-import { aproximarCoordenadas, puedeEditarse, validarParCoordenadas } from '../domain/publicacion.rules';
+import { aproximarCoordenadas, puedeEditarse, validarDatosPorTipo, validarParCoordenadas } from '../domain/publicacion.rules';
 import { cargarPublicacionPropia } from './acceso';
 
 export interface EditarPublicacionInput {
@@ -12,6 +12,8 @@ export interface EditarPublicacionInput {
   titulo?: string;
   descripcion?: string;
   terreno?: Partial<DatosTerreno>;
+  /** Solo en publicaciones CASA. El tipo de inmueble no se edita. */
+  casa?: Partial<DatosCasa>;
   ubicacion?: {
     departamento?: string;
     municipio?: string;
@@ -37,6 +39,11 @@ export class EditarPublicacionUseCase {
       throw new BusinessRuleError('Una publicación vendida, rentada o rechazada ya no se puede editar');
     }
 
+    if (input.casa) {
+      if (actual.tipoPropiedad !== 'CASA') validarDatosPorTipo(actual.tipoPropiedad, input.casa);
+      // Una casa conserva sus datos obligatorios tras la edición.
+      validarDatosPorTipo('CASA', { ...actual.casa, ...input.casa });
+    }
     const { ubicacion } = input;
     if (ubicacion) validarParCoordenadas(ubicacion.latitud, ubicacion.longitud);
 
@@ -44,6 +51,7 @@ export class EditarPublicacionUseCase {
       titulo: input.titulo?.trim(),
       descripcion: input.descripcion?.trim(),
       terreno: input.terreno,
+      casa: input.casa,
       ubicacion: ubicacion
         ? {
             ...ubicacion,

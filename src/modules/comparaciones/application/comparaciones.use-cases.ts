@@ -6,6 +6,7 @@ import {
   TerrenoComparable,
   construirResumen,
   validarMismaOperacion,
+  validarMismoTipoPropiedad,
   validarSeleccion,
 } from '../domain/comparacion';
 import { COMPARACION_REPOSITORY, ComparacionRepository } from '../domain/comparacion.repository';
@@ -44,6 +45,7 @@ export class CrearComparacionUseCase {
       });
     }
     validarMismaOperacion(terrenos);
+    validarMismoTipoPropiedad(terrenos);
 
     const comparacion = await this.repo.crear(idCliente, ids);
     return armarVista(comparacion, terrenos);

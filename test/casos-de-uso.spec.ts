@@ -355,6 +355,9 @@ function publicacion(estado: EstadoPublicacion, precio = 25000): Publicacion {
     titulo: 'Terreno en San Miguel',
     descripcion: 'Terreno plano',
     tipoOperacion: 'VENTA',
+    tipoPropiedad: 'TERRENO',
+    casa: null,
+    motivoRechazo: null,
     precio,
     estado,
     fechaPublicacion: new Date(),
@@ -378,6 +381,7 @@ function publicacion(estado: EstadoPublicacion, precio = 25000): Publicacion {
       telefono: null,
       numeroWhatsapp: null,
       estadoVerificacion: 'PENDIENTE',
+      estadoCuenta: 'ACTIVA',
     },
   };
 }
@@ -468,6 +472,10 @@ const terreno = (id: number, precio: number, area: number, extra: Partial<Terren
   idPublicacion: id,
   titulo: `Terreno ${id}`,
   tipoOperacion: 'VENTA',
+  tipoPropiedad: 'TERRENO',
+  habitaciones: null,
+  banos: null,
+  areaConstruidaM2: null,
   precio,
   estado: 'ACTIVA',
   disponible: true,
@@ -544,6 +552,17 @@ describe('P12 - CrearComparacionUseCase', () => {
     const e = await rechaza(uc.execute({ user: clienteUser, idsPublicaciones: [1, 5, 99] }), BusinessRuleError);
     assert.deepEqual(e.details, { idsNoDisponibles: [5, 99] });
     assert.equal(repo.guardadas.length, 0);
+  });
+
+  it('no mezcla tipos de inmueble: CASA con TERRENO -> 422; dos casas -> resumen con habitaciones', async () => {
+    const casa = (id: number, precio: number, hab: number, construida: number) =>
+      terreno(id, precio, 300, { tipoPropiedad: 'CASA', habitaciones: hab, banos: 2, areaConstruidaM2: construida });
+    const repo = new ComparacionesEnMemoria([...base, casa(10, 90000, 3, 120), casa(11, 85000, 4, 100)]);
+    const uc = new CrearComparacionUseCase(repo);
+    const e = await rechaza(uc.execute({ user: clienteUser, idsPublicaciones: [1, 10] }), BusinessRuleError);
+    assert.deepEqual((e.details as { tiposPropiedad: string[] }).tiposPropiedad.sort(), ['CASA', 'TERRENO']);
+    const r = await uc.execute({ user: clienteUser, idsPublicaciones: [10, 11] });
+    assert.deepEqual(r.resumen, { menorPrecio: 11, mayorArea: 10, menorPrecioPorM2: 11, masHabitaciones: 11, mayorAreaConstruida: 10 });
   });
 
   it('usuario sin perfil de cliente -> 403', async () => {

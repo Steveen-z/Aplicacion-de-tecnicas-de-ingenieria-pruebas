@@ -59,6 +59,8 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
         titulo: datos.titulo,
         descripcion: datos.descripcion,
         tipoOperacion: datos.tipoOperacion,
+        tipoPropiedad: datos.tipoPropiedad,
+        ...(datos.casa ?? {}),
         precio: datos.precio,
         estado: 'ACTIVA',
         terreno: { create: { ...terreno, ubicacion: { create: { ...ubicacion } } } },
@@ -165,6 +167,7 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
     const data: Prisma.PublicacionUpdateInput = {
       titulo: cambios.titulo,
       descripcion: cambios.descripcion,
+      ...(cambios.casa ?? {}),
       // Los updates anidados no tocan la fila padre, así que la fecha se fija a mano.
       fechaActualizacion: new Date(),
     };
@@ -345,6 +348,9 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
       vendedor: { usuario: { estadoCuenta: 'ACTIVA' } },
     };
     if (f.tipoOperacion) where.tipoOperacion = f.tipoOperacion;
+    if (f.tipoPropiedad) where.tipoPropiedad = f.tipoPropiedad;
+    if (f.habitacionesMin !== undefined) where.habitaciones = { gte: f.habitacionesMin };
+    if (f.banosMin !== undefined) where.banos = { gte: f.banosMin };
     if (Object.keys(precio).length > 0) where.precio = precio;
     if (Object.keys(terreno).length > 0) where.terreno = { is: terreno };
     if (f.q) {
