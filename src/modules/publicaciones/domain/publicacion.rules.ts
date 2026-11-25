@@ -1,5 +1,5 @@
 import { BusinessRuleError } from '../../../shared/domain/errors';
-import { EstadoPublicacion, TipoOperacion } from './publicacion';
+import { DatosCasa, EstadoPublicacion, TipoOperacion, TipoPropiedad } from './publicacion';
 
 export const MAX_FOTOGRAFIAS = 20;
 
@@ -80,5 +80,32 @@ export function validarParCoordenadas(latitud: number | null | undefined, longit
   const tieneLng = longitud !== null && longitud !== undefined;
   if (tieneLat !== tieneLng) {
     throw new BusinessRuleError('La latitud y la longitud deben enviarse juntas');
+  }
+}
+
+// ---------------------------------------------------------------- Tipos de inmueble
+
+/**
+ * Coherencia entre el tipo de inmueble y los datos de casa (la base tiene el mismo CHECK):
+ * una CASA exige habitaciones, baños y área construida; un LOTE o TERRENO no lleva datos de casa.
+ */
+export function validarDatosPorTipo(tipo: TipoPropiedad, casa: Partial<DatosCasa> | null | undefined): void {
+  const tieneCasa = casa !== null && casa !== undefined && Object.values(casa).some((v) => v !== undefined && v !== null);
+  if (tipo !== 'CASA') {
+    if (tieneCasa) throw new BusinessRuleError(`Un inmueble de tipo ${tipo} no lleva datos de casa`);
+    return;
+  }
+  const faltan = (['habitaciones', 'banos', 'areaConstruidaM2'] as const).filter(
+    (campo) => casa?.[campo] === undefined || casa?.[campo] === null,
+  );
+  if (faltan.length > 0) {
+    throw new BusinessRuleError('Una casa debe indicar habitaciones, baños y área construida', { faltan });
+  }
+}
+
+/** Los filtros de casa solo tienen sentido buscando casas. */
+export function validarFiltroCasa(f: { tipoPropiedad?: TipoPropiedad; habitacionesMin?: number; banosMin?: number }): void {
+  if ((f.habitacionesMin !== undefined || f.banosMin !== undefined) && f.tipoPropiedad !== 'CASA') {
+    throw new BusinessRuleError('habitacionesMin y banosMin solo se pueden usar con tipoPropiedad=CASA');
   }
 }

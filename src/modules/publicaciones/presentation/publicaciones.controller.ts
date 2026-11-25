@@ -123,6 +123,8 @@ export class PublicacionesController {
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       tipoOperacion: dto.tipoOperacion,
+      tipoPropiedad: dto.tipoPropiedad,
+      casa: dto.casa ?? null,
       precio: dto.precio,
       terreno: {
         areaM2: dto.terreno.areaM2,

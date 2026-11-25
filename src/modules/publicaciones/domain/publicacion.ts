@@ -1,5 +1,16 @@
 export type EstadoPublicacion = 'ACTIVA' | 'PAUSADA' | 'VENDIDA' | 'RENTADA' | 'PENDIENTE' | 'RECHAZADA';
 export type TipoOperacion = 'VENTA' | 'RENTA';
+export const TIPOS_PROPIEDAD = ['CASA', 'LOTE', 'TERRENO'] as const;
+export type TipoPropiedad = (typeof TIPOS_PROPIEDAD)[number];
+
+/** Datos propios de una CASA (obligatorios: habitaciones, banos, areaConstruidaM2). */
+export interface DatosCasa {
+  habitaciones: number;
+  banos: number;
+  areaConstruidaM2: number;
+  niveles: number | null;
+  estacionamientos: number | null;
+}
 
 export interface Fotografia {
   idFotografia: number;
@@ -51,6 +62,9 @@ export interface Publicacion {
   titulo: string;
   descripcion: string;
   tipoOperacion: TipoOperacion;
+  tipoPropiedad: TipoPropiedad;
+  /** Solo para CASA; null en LOTE y TERRENO. */
+  casa: DatosCasa | null;
   precio: number;
   estado: EstadoPublicacion;
   fechaPublicacion: Date;
@@ -68,6 +82,10 @@ export interface PublicacionResumen {
   idPublicacion: number;
   titulo: string;
   tipoOperacion: TipoOperacion;
+  tipoPropiedad: TipoPropiedad;
+  habitaciones: number | null;
+  banos: number | null;
+  areaConstruidaM2: number | null;
   precio: number;
   estado: EstadoPublicacion;
   areaM2: number;
@@ -111,6 +129,10 @@ export interface FiltroPublicaciones {
   areaMin?: number;
   areaMax?: number;
   q?: string;
+  tipoPropiedad?: TipoPropiedad;
+  /** Solo junto con tipoPropiedad=CASA. */
+  habitacionesMin?: number;
+  banosMin?: number;
   cercania?: Cercania;
   orden: OrdenPublicaciones;
 }
@@ -126,6 +148,8 @@ export interface NuevaPublicacion {
   titulo: string;
   descripcion: string;
   tipoOperacion: TipoOperacion;
+  tipoPropiedad: TipoPropiedad;
+  casa: DatosCasa | null;
   precio: number;
   terreno: DatosTerreno;
   ubicacion: DatosUbicacion;
@@ -137,4 +161,5 @@ export interface CambiosPublicacion {
   descripcion?: string;
   terreno?: Partial<DatosTerreno>;
   ubicacion?: Partial<DatosUbicacion>;
+  casa?: Partial<DatosCasa>;
 }

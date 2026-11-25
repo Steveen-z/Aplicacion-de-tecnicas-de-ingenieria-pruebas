@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -17,7 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../shared/infrastructure/http/pagination-query.dto';
-import { RADIO_MAX_KM, RADIO_MIN_KM } from '../domain/publicacion';
+import { RADIO_MAX_KM, RADIO_MIN_KM, TIPOS_PROPIEDAD } from '../domain/publicacion';
 import { MAX_FOTOGRAFIAS } from '../domain/publicacion.rules';
 
 const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -41,6 +42,17 @@ export class FiltroPublicacionesDto extends PaginationQueryDto {
 
   @IsOptional() @IsIn(OPERACIONES)
   tipoOperacion?: (typeof OPERACIONES)[number];
+
+  @IsOptional() @IsIn(TIPOS_PROPIEDAD)
+  tipoPropiedad?: (typeof TIPOS_PROPIEDAD)[number];
+
+  /** Solo con tipoPropiedad=CASA (422 si no). */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(30)
+  habitacionesMin?: number;
+
+  /** Solo con tipoPropiedad=CASA (422 si no). */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(30)
+  banosMin?: number;
 
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) @Max(MAX_PRECIO)
   precioMin?: number;
@@ -105,6 +117,25 @@ export class TerrenoDto {
   caracteristicas?: string;
 }
 
+/** Datos de una CASA (obligatorios: habitaciones, banos, areaConstruidaM2; los valida el dominio con 422). */
+export class CasaDto {
+  @IsOptional() @IsInt() @Min(1) @Max(30)
+  habitaciones?: number;
+
+  @IsOptional() @IsInt() @Min(1) @Max(30)
+  banos?: number;
+
+  /** Área construida en m². */
+  @IsOptional() @IsNumber(DECIMAL_2) @Min(0.01) @Max(99_999_999.99)
+  areaConstruidaM2?: number;
+
+  @IsOptional() @IsInt() @Min(1) @Max(10)
+  niveles?: number;
+
+  @IsOptional() @IsInt() @Min(0) @Max(20)
+  estacionamientos?: number;
+}
+
 export class UbicacionDto {
   @Transform(recortar) @IsString() @MinLength(1) @MaxLength(100)
   departamento!: string;
@@ -150,9 +181,18 @@ export class CrearPublicacionDto {
   @IsIn(OPERACIONES)
   tipoOperacion!: (typeof OPERACIONES)[number];
 
+  /** CASA, LOTE o TERRENO (por defecto TERRENO). No se puede cambiar después. */
+  @IsOptional() @IsIn(TIPOS_PROPIEDAD)
+  tipoPropiedad?: (typeof TIPOS_PROPIEDAD)[number];
+
+  /** Obligatorio si tipoPropiedad=CASA; no se permite en LOTE ni TERRENO. */
+  @IsOptional() @ValidateNested() @Type(() => CasaDto)
+  casa?: CasaDto;
+
   @IsNumber(DECIMAL_2) @Min(0.01) @Max(MAX_PRECIO)
   precio!: number;
 
+  /** Predio: para una CASA, el área del terreno donde está construida. */
   @ValidateNested() @Type(() => TerrenoDto)
   terreno!: TerrenoDto;
 
@@ -213,6 +253,10 @@ export class EditarPublicacionDto {
 
   @IsOptional() @ValidateNested() @Type(() => ActualizarTerrenoDto)
   terreno?: ActualizarTerrenoDto;
+
+  /** Solo en publicaciones CASA (422 en otros tipos). */
+  @IsOptional() @ValidateNested() @Type(() => CasaDto)
+  casa?: CasaDto;
 
   @IsOptional() @ValidateNested() @Type(() => ActualizarUbicacionDto)
   ubicacion?: ActualizarUbicacionDto;

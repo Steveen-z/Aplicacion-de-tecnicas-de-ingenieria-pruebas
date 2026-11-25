@@ -1,11 +1,13 @@
 import { Prisma } from '@prisma/client';
 import { dec, decOrNull, num } from '../../../shared/infrastructure/prisma/prisma-helpers';
 import {
+  DatosCasa,
   EstadoPublicacion,
   Fotografia,
   Publicacion,
   PublicacionResumen,
   TipoOperacion,
+  TipoPropiedad,
 } from '../domain/publicacion';
 
 export const publicacionInclude = {
@@ -47,6 +49,8 @@ export function aPublicacion(row: PublicacionRow): Publicacion {
     titulo: row.titulo,
     descripcion: row.descripcion,
     tipoOperacion: row.tipoOperacion as TipoOperacion,
+    tipoPropiedad: row.tipoPropiedad as TipoPropiedad,
+    casa: aCasa(row),
     precio: dec(row.precio),
     estado: row.estado as EstadoPublicacion,
     fechaPublicacion: row.fechaPublicacion,
@@ -83,6 +87,27 @@ export function aPublicacion(row: PublicacionRow): Publicacion {
   };
 }
 
+/** Datos de casa de una fila; null si no es CASA. */
+export function aCasa(row: {
+  tipoPropiedad: string;
+  habitaciones: number | null;
+  banos: number | null;
+  areaConstruidaM2: Prisma.Decimal | null;
+  niveles: number | null;
+  estacionamientos: number | null;
+}): DatosCasa | null {
+  if (row.tipoPropiedad !== 'CASA' || row.habitaciones === null || row.banos === null || row.areaConstruidaM2 === null) {
+    return null;
+  }
+  return {
+    habitaciones: row.habitaciones,
+    banos: row.banos,
+    areaConstruidaM2: dec(row.areaConstruidaM2),
+    niveles: row.niveles,
+    estacionamientos: row.estacionamientos,
+  };
+}
+
 export function aResumen(row: ResumenRow): PublicacionResumen {
   const { terreno } = row;
   if (!terreno || !terreno.ubicacion) {
@@ -92,6 +117,10 @@ export function aResumen(row: ResumenRow): PublicacionResumen {
     idPublicacion: num(row.id),
     titulo: row.titulo,
     tipoOperacion: row.tipoOperacion as TipoOperacion,
+    tipoPropiedad: row.tipoPropiedad as TipoPropiedad,
+    habitaciones: row.habitaciones,
+    banos: row.banos,
+    areaConstruidaM2: decOrNull(row.areaConstruidaM2),
     precio: dec(row.precio),
     estado: row.estado as EstadoPublicacion,
     areaM2: dec(terreno.areaM2),

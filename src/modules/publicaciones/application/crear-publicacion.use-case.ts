@@ -2,19 +2,29 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { BusinessRuleError, ForbiddenError } from '../../../shared/domain/errors';
 import {
+  DatosCasa,
   DatosTerreno,
   NuevaFotografia,
   Publicacion,
   TipoOperacion,
+  TipoPropiedad,
 } from '../domain/publicacion';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
-import { MAX_FOTOGRAFIAS, aproximarCoordenadas, validarParCoordenadas } from '../domain/publicacion.rules';
+import {
+  MAX_FOTOGRAFIAS,
+  aproximarCoordenadas,
+  validarDatosPorTipo,
+  validarParCoordenadas,
+} from '../domain/publicacion.rules';
 
 export interface CrearPublicacionInput {
   user: AuthUser;
   titulo: string;
   descripcion: string;
   tipoOperacion: TipoOperacion;
+  /** Por defecto TERRENO (compatibilidad con clientes anteriores a los tipos de inmueble). */
+  tipoPropiedad?: TipoPropiedad;
+  casa?: Partial<DatosCasa> | null;
   precio: number;
   terreno: DatosTerreno;
   ubicacion: {
@@ -44,6 +54,18 @@ export class CrearPublicacionUseCase {
       throw new BusinessRuleError(`Solo se permiten hasta ${MAX_FOTOGRAFIAS} fotografías por publicación`);
     }
     validarParCoordenadas(input.ubicacion.latitud, input.ubicacion.longitud);
+    const tipoPropiedad = input.tipoPropiedad ?? 'TERRENO';
+    validarDatosPorTipo(tipoPropiedad, input.casa);
+    const casa: DatosCasa | null =
+      tipoPropiedad === 'CASA'
+        ? {
+            habitaciones: input.casa!.habitaciones!,
+            banos: input.casa!.banos!,
+            areaConstruidaM2: input.casa!.areaConstruidaM2!,
+            niveles: input.casa!.niveles ?? null,
+            estacionamientos: input.casa!.estacionamientos ?? null,
+          }
+        : null;
 
     // Exactamente una portada: la primera marcada, o la primera foto si ninguna lo está.
     const indicePortada = Math.max(0, input.fotografias.findIndex((f) => f.esPortada));
@@ -54,6 +76,8 @@ export class CrearPublicacionUseCase {
       titulo: input.titulo.trim(),
       descripcion: input.descripcion.trim(),
       tipoOperacion: input.tipoOperacion,
+      tipoPropiedad,
+      casa,
       precio: input.precio,
       terreno: input.terreno,
       ubicacion: {

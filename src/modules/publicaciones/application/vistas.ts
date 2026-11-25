@@ -14,11 +14,14 @@ export function construirVistaDetalle(publicacion: Publicacion, privilegiado: bo
     titulo: publicacion.titulo,
     descripcion: publicacion.descripcion,
     tipoOperacion: publicacion.tipoOperacion,
+    tipoPropiedad: publicacion.tipoPropiedad,
     precio: publicacion.precio,
     estado: publicacion.estado,
     fechaPublicacion: publicacion.fechaPublicacion,
     fechaActualizacion: publicacion.fechaActualizacion,
+    /** Predio (en una CASA, el terreno donde está construida). */
     terreno: publicacion.terreno,
+    casa: publicacion.casa,
     ubicacion: {
       departamento: ubicacion.departamento,
       municipio: ubicacion.municipio,

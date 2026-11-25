@@ -27,6 +27,7 @@ import { evaluarRequisitosVendedor } from '../src/modules/cambio-rol/domain/soli
 import { detectarExtension } from '../src/modules/archivos/domain/tipo-archivo';
 import { esRutaArchivoValida } from '../src/shared/domain/file-storage.port';
 import { decidirAvisoBajaPrecio } from '../src/modules/publicaciones/domain/baja-precio';
+import { validarDatosPorTipo, validarFiltroCasa } from '../src/modules/publicaciones/domain/publicacion.rules';
 
 const ok = (nombre: string, fn: () => void) => it(nombre, fn);
 const lanza = (fn: () => unknown) => assert.throws(fn, BusinessRuleError);
@@ -124,7 +125,7 @@ ok('un vendedor VERIFICADO no pierde la verificación al enviar otro documento',
 
 // ---- Comparación (P12)
 const t = (idPublicacion: number, precio: number, areaM2: number, tipoOperacion = 'VENTA') => ({
-  idPublicacion, titulo: `T${idPublicacion}`, tipoOperacion, precio, estado: 'ACTIVA', disponible: true, areaM2,
+  idPublicacion, titulo: `T${idPublicacion}`, tipoOperacion, tipoPropiedad: 'TERRENO', habitaciones: null, banos: null, areaConstruidaM2: null, precio, estado: 'ACTIVA', disponible: true, areaM2,
   largoM: null, anchoM: null, tipoTerreno: null, caracteristicas: null, departamento: 'X', municipio: 'Y',
   distrito: null, portadaUrl: null, precioPorM2: Math.round((precio / areaM2) * 100) / 100,
 });
@@ -181,4 +182,20 @@ ok('aviso de baja de precio: solo baja real en publicación ACTIVA', () => {
   assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'ACTIVA', precioNuevo: 1000 }), null);
   assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'ACTIVA', precioNuevo: 1200 }), null);
   assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'PAUSADA', precioNuevo: 500 }), null);
+});
+
+// ---- Tipos de inmueble
+ok('CASA exige habitaciones, baños y área construida; LOTE/TERRENO no llevan datos de casa', () => {
+  validarDatosPorTipo('CASA', { habitaciones: 3, banos: 2, areaConstruidaM2: 120 });
+  validarDatosPorTipo('TERRENO', null);
+  validarDatosPorTipo('LOTE', {});
+  lanza(() => validarDatosPorTipo('CASA', { habitaciones: 3 }));
+  lanza(() => validarDatosPorTipo('CASA', null));
+  lanza(() => validarDatosPorTipo('TERRENO', { habitaciones: 2 }));
+});
+ok('filtros de casa solo con tipoPropiedad=CASA', () => {
+  validarFiltroCasa({ tipoPropiedad: 'CASA', habitacionesMin: 3 });
+  validarFiltroCasa({ tipoPropiedad: 'TERRENO' });
+  lanza(() => validarFiltroCasa({ tipoPropiedad: 'TERRENO', habitacionesMin: 3 }));
+  lanza(() => validarFiltroCasa({ banosMin: 1 }));
 });
