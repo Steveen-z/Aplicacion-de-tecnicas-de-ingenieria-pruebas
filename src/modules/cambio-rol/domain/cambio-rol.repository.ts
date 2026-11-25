@@ -13,5 +13,7 @@ export interface CambioRolRepository {
     idUsuario: number,
     datos: DatosVendedorSolicitados,
   ): Promise<{ idSolicitud: number; idVendedor: number }>;
+  /** Registra una solicitud RECHAZADA con los requisitos que faltaban (trazabilidad de P03). */
+  registrarRechazo(idUsuario: number, requisitosPendientes: string[]): Promise<void>;
   listarSolicitudes(idUsuario: number): Promise<SolicitudCambioRol[]>;
 }

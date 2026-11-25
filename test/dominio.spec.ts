@@ -145,9 +145,13 @@ ok('resumen: menor precio, mayor área, menor precio por m²', () => {
 
 // ---- Cambio de rol (P03)
 ok('requisitos de vendedor: lista de pendientes', () => {
-  assert.deepEqual(evaluarRequisitosVendedor({ nombreCompleto: 'Ana Pérez', telefono: '7000-1234' }, { dui: '01234567-8', numeroWhatsapp: null }), []);
+  assert.deepEqual(evaluarRequisitosVendedor({ nombreCompleto: 'Ana Pérez', telefono: '7000-1234' }, { dui: '01234567-8', numeroWhatsapp: '7000-1234' }), []);
   const faltan = evaluarRequisitosVendedor({ nombreCompleto: 'Ana Pérez', telefono: null }, { dui: '123', numeroWhatsapp: 'x' });
   assert.equal(faltan.length, 3);
+  // Sin DUI ni WhatsApp: ambos aparecen como pendientes (P03 responde 422, no 400)
+  const sinDatos = evaluarRequisitosVendedor({ nombreCompleto: 'Ana Pérez', telefono: null }, { dui: '', numeroWhatsapp: null });
+  assert.equal(sinDatos.length, 3);
+  assert.ok(sinDatos.some((p) => p.includes('WhatsApp')));
 });
 
 // ---- Archivos

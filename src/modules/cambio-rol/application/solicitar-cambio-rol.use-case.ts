@@ -11,8 +11,10 @@ import { evaluarRequisitosVendedor } from '../domain/solicitud-cambio-rol';
 
 export interface SolicitarCambioRolInput {
   idUsuario: number;
-  dui: string;
+  dui?: string;
   numeroWhatsapp?: string;
+  /** Permite completar el teléfono del perfil en la misma solicitud. */
+  telefono?: string;
 }
 
 /** P03 - Solicitar cambio de rol a vendedor. */
@@ -26,18 +28,21 @@ export class SolicitarCambioRolUseCase {
     if (perfil.rol === 'VENDEDOR') throw new ConflictError('Tu cuenta ya tiene el rol de vendedor');
     if (perfil.rol === 'ADMIN') throw new ForbiddenError('Una cuenta de administrador no puede ser vendedor');
 
-    const telefono = perfil.telefono ? normalizarTelefono(perfil.telefono) : null;
+    const telefonoNuevo = input.telefono?.trim() ? normalizarTelefono(input.telefono) : null;
+    const telefono = telefonoNuevo ?? (perfil.telefono ? normalizarTelefono(perfil.telefono) : null);
     const datos = {
-      dui: input.dui.trim(),
-      numeroWhatsapp: input.numeroWhatsapp ? normalizarTelefono(input.numeroWhatsapp) : telefono,
+      dui: input.dui?.trim() ?? '',
+      numeroWhatsapp: input.numeroWhatsapp?.trim() ? normalizarTelefono(input.numeroWhatsapp) : telefono,
+      telefono: telefonoNuevo,
     };
 
-    const pendientes = evaluarRequisitosVendedor(perfil, datos);
+    const pendientes = evaluarRequisitosVendedor({ nombreCompleto: perfil.nombreCompleto, telefono }, datos);
     if (pendientes.length === 0 && (await this.repo.duiEnUso(datos.dui))) {
       pendientes.push('El DUI ya está registrado en otra cuenta');
     }
 
     if (pendientes.length > 0) {
+      await this.repo.registrarRechazo(perfil.idUsuario, pendientes);
       throw new BusinessRuleError('Aún no cumples los requisitos para ser vendedor', {
         requisitosPendientes: pendientes,
       });
