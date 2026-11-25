@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuthUser } from '../../../shared/domain/auth-user';
+import { ConflictError } from '../../../shared/domain/errors';
 import { EstadoPublicacion } from '../domain/publicacion';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
 import { AccionEstado, calcularNuevoEstado } from '../domain/publicacion.rules';
@@ -23,7 +24,10 @@ export class CambiarEstadoUseCase {
       totalFotografias: publicacion.fotografias.length,
     });
 
-    await this.repo.cambiarEstado(publicacion.idPublicacion, nuevoEstado);
+    const aplicado = await this.repo.cambiarEstado(publicacion.idPublicacion, publicacion.estado, nuevoEstado);
+    if (!aplicado) {
+      throw new ConflictError('La publicación cambió de estado mientras tanto; recarga e inténtalo de nuevo');
+    }
     return { idPublicacion: publicacion.idPublicacion, estado: nuevoEstado };
   }
 }

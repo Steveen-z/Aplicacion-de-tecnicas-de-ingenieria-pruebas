@@ -1,3 +1,4 @@
+import { NuevaAuditoria } from '../../../shared/domain/auditoria';
 import {
   DocumentoConVendedor,
   DocumentoVerificacion,
@@ -22,12 +23,17 @@ export interface DocumentoRepository {
     rutaDocumento: string,
     resolverEstado: ResolverEstadoEnvio,
   ): Promise<ResultadoDocumento>;
-  /** null si el documento no existe. Recalcula el estado del vendedor en la misma transacción. */
+  /**
+   * En una transacción: revisa el documento solo si sigue PENDIENTE (UPDATE condicional),
+   * recalcula el estado del vendedor y escribe la auditoría.
+   * null si no existe; 'YA_REVISADO' si otro administrador lo revisó primero.
+   */
   revisarDocumento(
     idDocumento: number,
     revision: { estado: 'APROBADO' | 'RECHAZADO'; observaciones: string | null },
     resolverEstado: ResolverEstadoRevision,
-  ): Promise<ResultadoDocumento | null>;
+    construirAuditoria: (resultado: ResultadoDocumento) => NuevaAuditoria,
+  ): Promise<ResultadoDocumento | 'YA_REVISADO' | null>;
   buscarPorId(idDocumento: number): Promise<DocumentoVerificacion | null>;
   listarDeVendedor(idVendedor: number): Promise<DocumentoVerificacion[]>;
   obtenerEstadoVendedor(idVendedor: number): Promise<EstadoVerificacion | null>;

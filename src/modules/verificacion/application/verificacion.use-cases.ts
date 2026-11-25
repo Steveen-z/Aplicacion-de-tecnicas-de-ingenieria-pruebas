@@ -68,6 +68,7 @@ export class RevisarDocumentoUseCase {
   constructor(@Inject(DOCUMENTO_REPOSITORY) private readonly repo: DocumentoRepository) {}
 
   async execute(input: {
+    idActor: number;
     idDocumento: number;
     estado: 'APROBADO' | 'RECHAZADO';
     observaciones?: string;
@@ -87,8 +88,16 @@ export class RevisarDocumentoUseCase {
       input.idDocumento,
       { estado: input.estado, observaciones },
       calcularEstadoVerificacion,
+      ({ documento, estadoVerificacion }) => ({
+        idActor: input.idActor,
+        accion: input.estado === 'APROBADO' ? 'DOCUMENTO_APROBADO' : 'DOCUMENTO_RECHAZADO',
+        entidad: 'DOCUMENTO',
+        idEntidad: documento.idDocumento,
+        detalle: { estado: input.estado, observaciones, idVendedor: documento.idVendedor, estadoVerificacion },
+      }),
     );
     if (!resultado) throw new NotFoundError('El documento no existe');
+    if (resultado === 'YA_REVISADO') throw new ConflictError('Este documento ya fue revisado');
     return resultado;
   }
 }

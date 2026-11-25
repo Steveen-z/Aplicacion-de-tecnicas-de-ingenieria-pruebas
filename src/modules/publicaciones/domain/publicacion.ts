@@ -41,6 +41,8 @@ export interface VendedorResumen {
   telefono: string | null;
   numeroWhatsapp: string | null;
   estadoVerificacion: string;
+  /** Una cuenta BLOQUEADA no muestra sus publicaciones al público. */
+  estadoCuenta: string;
 }
 
 export interface Publicacion {
@@ -57,6 +59,8 @@ export interface Publicacion {
   ubicacion: DatosUbicacion;
   fotografias: Fotografia[];
   vendedor: VendedorResumen;
+  /** Motivo de moderación; solo con estado RECHAZADA. */
+  motivoRechazo: string | null;
 }
 
 /** Fila del listado (P04/P05). No incluye datos sensibles. */

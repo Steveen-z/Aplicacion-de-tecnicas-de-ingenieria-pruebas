@@ -51,6 +51,7 @@ export function aPublicacion(row: PublicacionRow): Publicacion {
     estado: row.estado as EstadoPublicacion,
     fechaPublicacion: row.fechaPublicacion,
     fechaActualizacion: row.fechaActualizacion,
+    motivoRechazo: row.motivoRechazo,
     terreno: {
       idTerreno: num(terreno.id),
       areaM2: dec(terreno.areaM2),
@@ -77,6 +78,7 @@ export function aPublicacion(row: PublicacionRow): Publicacion {
       telefono: row.vendedor.usuario.telefono,
       numeroWhatsapp: row.vendedor.numeroWhatsapp,
       estadoVerificacion: row.vendedor.estadoVerificacion,
+      estadoCuenta: row.vendedor.usuario.estadoCuenta,
     },
   };
 }

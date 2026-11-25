@@ -79,7 +79,8 @@ check F04a "Login correcto -> 200" '[ "$STATUS" = 200 ]'
 req POST /auth/login "" "{\"correo\":\"$CLI\",\"password\":\"Incorrecta1\"}"
 check F04b "Login incorrecto -> 401" '[ "$STATUS" = 401 ]'
 
-req POST /auth/login "" "{\"correo\":\"$CLI\",\"password\":\"Clave12345\"}"
+# Sesión desechable obtenida por registro (el límite de login es de 5/min y se usa más adelante)
+req POST /auth/registro/cliente "" "{\"nombreCompleto\":\"Sesion Temporal\",\"correo\":\"temp$SUF@prueba.sv\",\"password\":\"Clave12345\"}"
 TOK_TMP="$(j .token)"
 req POST /auth/logout "$TOK_TMP"; S1="$STATUS"
 req GET /auth/me "$TOK_TMP"
@@ -285,6 +286,80 @@ req GET "/publicaciones?orden=DISTANCIA"; C="$STATUS"
 check F44 "radioKm=100 ($A), solo lat ($B), DISTANCIA sin centro ($C) -> 400" '[ "$A" = 400 ] && [ "$B" = 400 ] && [ "$C" = 400 ]'
 req GET /health
 check F55 "GET /health incluye la versión de PostGIS y el esquema" '[ "$STATUS" = 200 ] && [ "$(j .postgis)" != null ] && echo "$BODY" | jq -e ".esquema | index(\"002\") != null" >/dev/null'
+
+echo "== Fase 2: administración (usuarios, moderación, auditoría) =="
+req GET /admin/usuarios "$TOK_CLI"; A="$STATUS"
+req GET /admin/auditoria "$TOK_VEN"; B="$STATUS"
+req PATCH "/admin/publicaciones/$PUB3/moderacion" "$TOK_VEN" '{"accion":"RECHAZAR","motivo":"x"}'; C="$STATUS"
+check F25 "Cliente/vendedor en /admin/usuarios ($A), /admin/auditoria ($B), moderación ($C) -> 403" '[ "$A" = 403 ] && [ "$B" = 403 ] && [ "$C" = 403 ]'
+
+req GET "/admin/usuarios?rol=VENDEDOR&limit=5" "$TOK_ADM"
+check F26 "Admin lista usuarios filtrando rol=VENDEDOR, paginado" \
+  '[ "$STATUS" = 200 ] && echo "$BODY" | jq -e "(.items | length) <= 5 and all(.items[]; .rol == \"VENDEDOR\") and .totalPages >= 1 and (.items[0] | has(\"passwordHash\") | not)" >/dev/null'
+
+req GET "/admin/usuarios?q=$VEN2" "$TOK_ADM"; ID_VEN2="$(j '.items[0].idUsuario')"
+req GET "/admin/auditoria?accion=USUARIO_BLOQUEADO&entidad=USUARIO&idEntidad=$ID_VEN2" "$TOK_ADM"; AUD_ANTES="$(j .total)"
+req PATCH "/admin/usuarios/$ID_VEN2/estado" "$TOK_ADM" '{"estado":"BLOQUEADA","motivo":"Publicaciones engañosas"}'; A="$STATUS"; CERRADAS="$(j .sesionesCerradas)"
+req GET /auth/me "$TOK_VEN2"; B="$STATUS"
+req POST /auth/login "" "{\"correo\":\"$VEN2\",\"password\":\"Clave12345\"}"; C="$STATUS"
+check F27 "Bloquear vendedor 2 ($A, sesiones cerradas $CERRADAS): su token ($B) y su login ($C) -> 200/401/403" \
+  '[ "$A" = 200 ] && [ "$CERRADAS" -ge 1 ] && [ "$B" = 401 ] && [ "$C" = 403 ]'
+
+req PATCH "/admin/usuarios/$ID_VEN2/estado" "$TOK_ADM" '{"estado":"BLOQUEADA","motivo":"Publicaciones engañosas"}'; A="$STATUS"; HUBO="$(j .huboCambio)"
+req GET "/admin/auditoria?accion=USUARIO_BLOQUEADO&entidad=USUARIO&idEntidad=$ID_VEN2" "$TOK_ADM"; AUD_DESPUES="$(j .total)"
+check F28 "Bloquear otra vez ($A, huboCambio=$HUBO): auditoría $AUD_ANTES -> $AUD_DESPUES (solo +1)" \
+  '[ "$A" = 200 ] && [ "$HUBO" = false ] && [ "$AUD_DESPUES" = $((AUD_ANTES + 1)) ]'
+
+req GET /auth/me "$TOK_ADM"; ID_ADM="$(j .idUsuario)"
+req PATCH "/admin/usuarios/$ID_ADM/estado" "$TOK_ADM" '{"estado":"BLOQUEADA","motivo":"prueba"}'; A="$STATUS"
+req GET "/admin/usuarios?q=$CLI2" "$TOK_ADM"; ID_CLI2="$(j '.items[0].idUsuario')"
+req PATCH "/admin/usuarios/$ID_CLI2/estado" "$TOK_ADM" '{"estado":"BLOQUEADA"}'; B="$STATUS"
+check F29 "Admin se bloquea a sí mismo ($A); bloqueo sin motivo ($B) -> 403/422" '[ "$A" = 403 ] && [ "$B" = 422 ]'
+
+req GET "/publicaciones?limit=50&q=$SUF"; L1="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"
+req GET "/publicaciones?lat=13.48&lng=-88.18&radioKm=50&limit=50&q=$SUF"; L2="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"
+req GET "/publicaciones/$PUB3"; A="$STATUS"
+req GET "/publicaciones/$PUB3" "$TOK_ADM"; B="$STATUS"
+check F30 "Publicaciones del bloqueado: fuera del listado y de la búsqueda por radio; detalle anónimo $A, admin $B" \
+  'echo "$L1 $L2" | jq -se "all(.[]; index($PUB3) == null and index($PUB5) == null)" >/dev/null && [ "$A" = 404 ] && [ "$B" = 200 ]'
+
+req PATCH "/admin/usuarios/$ID_VEN2/estado" "$TOK_ADM" '{"estado":"ACTIVA"}'; A="$STATUS"
+req GET "/publicaciones/$PUB3"; B="$STATUS"
+req GET "/publicaciones?limit=50&q=$SUF"
+check F31 "Reactivar vendedor 2 ($A): sus publicaciones reaparecen (detalle $B)" \
+  '[ "$A" = 200 ] && [ "$B" = 200 ] && echo "$BODY" | jq -e "[.items[].idPublicacion] | index($PUB3) != null" >/dev/null'
+
+req PATCH "/admin/publicaciones/$PUB1/moderacion" "$TOK_ADM" '{"accion":"RECHAZAR"}'; A="$STATUS"
+req PATCH "/admin/publicaciones/$PUB1/moderacion" "$TOK_ADM" '{"accion":"RECHAZAR","motivo":"Las fotos no corresponden al terreno"}'; B="$STATUS"; EST="$(j .estado)"
+check F32 "Rechazar sin motivo ($A) / con motivo ($B, $EST) -> 422/200 RECHAZADA" '[ "$A" = 422 ] && [ "$B" = 200 ] && [ "$EST" = RECHAZADA ]'
+
+req GET "/publicaciones?limit=50&q=$SUF"; L1="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"
+req GET "/publicaciones/$PUB1"; A="$STATUS"
+req GET "/publicaciones/$PUB1" "$TOK_VEN"; MOTIVO="$(j .motivoRechazo)"
+req POST "/publicaciones/$PUB1/reactivar" "$TOK_VEN"; C="$STATUS"
+check F33 "Rechazada: fuera del listado, detalle anónimo $A, el vendedor ve el motivo y no puede reactivarla ($C)" \
+  'echo "$L1" | jq -e "index($PUB1) == null" >/dev/null && [ "$A" = 404 ] && [ "$MOTIVO" = "Las fotos no corresponden al terreno" ] && [ "$C" = 422 ]'
+
+req PATCH "/admin/publicaciones/$PUB4/moderacion" "$TOK_CLI" '{"accion":"RECHAZAR","motivo":"x"}'; A="$STATUS"
+req PATCH "/admin/publicaciones/$PUB4/moderacion" "$TOK_VEN" '{"accion":"RECHAZAR","motivo":"x"}'; B="$STATUS"
+check F34 "Cliente ($A) y vendedor ($B) intentan moderar -> 403" '[ "$A" = 403 ] && [ "$B" = 403 ]'
+
+req PATCH "/admin/publicaciones/$PUB1/moderacion" "$TOK_ADM" '{"accion":"RESTAURAR"}'; A="$STATUS"; EST="$(j .estado)"
+req PATCH "/admin/publicaciones/$PUB4/moderacion" "$TOK_ADM" '{"accion":"RESTAURAR"}'; B="$STATUS"
+req PATCH "/admin/publicaciones/$PUB2/moderacion" "$TOK_ADM" '{"accion":"RECHAZAR","motivo":"x"}'; C="$STATUS"
+check F35 "Restaurar rechazada ($A, $EST); restaurar no rechazada ($B); rechazar vendida ($C) -> 200 PAUSADA/422/422" \
+  '[ "$A" = 200 ] && [ "$EST" = PAUSADA ] && [ "$B" = 422 ] && [ "$C" = 422 ]'
+
+req GET /notificaciones "$TOK_VEN"
+check F36 "El vendedor recibe la notificación de rechazo con el motivo" \
+  'echo "$BODY" | jq -e "[.. | objects | select(.tipo? == \"PUBLICACION_RECHAZADA\" and .idPublicacion? == $PUB1 and (.mensaje | contains(\"Las fotos no corresponden\")))] | length >= 1" >/dev/null'
+
+req GET "/admin/auditoria?limit=50" "$TOK_ADM"; TODAS="$BODY"
+req GET "/admin/auditoria?entidad=PUBLICACION&idEntidad=$PUB1" "$TOK_ADM"; PUBS="$BODY"
+req GET "/admin/auditoria?desde=2030-01-01&hasta=2020-01-01" "$TOK_ADM"; A="$STATUS"
+req GET "/admin/auditoria?desde=no-es-fecha" "$TOK_ADM"; B="$STATUS"
+check F37 "Auditoría: bloqueo, activación, rechazo, restauración y aprobación con actor admin; filtros; fechas ($A/$B)" \
+  'echo "$TODAS" | jq -e "[.items[].accion] as \$a | ([\"USUARIO_BLOQUEADO\",\"USUARIO_ACTIVADO\",\"PUBLICACION_RECHAZADA\",\"PUBLICACION_RESTAURADA\",\"DOCUMENTO_APROBADO\"] - \$a | length) == 0 and all(.items[]; .actor.idUsuario == $ID_ADM)" >/dev/null && echo "$PUBS" | jq -e ".total == 2 and all(.items[]; .idEntidad == $PUB1)" >/dev/null && [ "$A" = 422 ] && [ "$B" = 400 ]'
 
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"

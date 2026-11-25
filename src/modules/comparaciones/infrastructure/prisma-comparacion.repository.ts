@@ -13,6 +13,7 @@ export class PrismaComparacionRepository implements ComparacionRepository {
       where: { id: { in: idsPublicaciones.map(big) } },
       include: {
         terreno: { include: { ubicacion: true } },
+        vendedor: { select: { usuario: { select: { estadoCuenta: true } } } },
         fotografias: { orderBy: [{ esPortada: 'desc' }, { orden: 'asc' }], take: 1 },
       },
     });
@@ -28,7 +29,7 @@ export class PrismaComparacionRepository implements ComparacionRepository {
           tipoOperacion: p.tipoOperacion,
           precio,
           estado: p.estado,
-          disponible: p.estado === 'ACTIVA',
+          disponible: p.estado === 'ACTIVA' && p.vendedor.usuario.estadoCuenta === 'ACTIVA',
           areaM2,
           largoM: decOrNull(p.terreno.largoM),
           anchoM: decOrNull(p.terreno.anchoM),
