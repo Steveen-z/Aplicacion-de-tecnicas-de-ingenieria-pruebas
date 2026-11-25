@@ -23,11 +23,13 @@ export interface PerfilParaCambioRol {
 export interface DatosVendedorSolicitados {
   dui: string;
   numeroWhatsapp: string | null;
+  /** Teléfono enviado en la solicitud para completar el perfil (null = se conserva el del perfil). */
+  telefono?: string | null;
 }
 
 /**
  * Requisitos para pasar de cliente a vendedor (P03): perfil completo, teléfono de
- * contacto válido, DUI con formato correcto y, si se indica, WhatsApp válido.
+ * contacto válido, DUI con formato correcto y número de WhatsApp válido.
  * Devuelve la lista de requisitos pendientes (vacía = cumple).
  */
 export function evaluarRequisitosVendedor(
@@ -44,7 +46,9 @@ export function evaluarRequisitosVendedor(
   if (!esDuiValido(datos.dui)) {
     pendientes.push('Ingresa un DUI con el formato 00000000-0');
   }
-  if (datos.numeroWhatsapp !== null && !esTelefonoValido(datos.numeroWhatsapp)) {
+  if (datos.numeroWhatsapp === null || datos.numeroWhatsapp.trim() === '') {
+    pendientes.push('Registra un número de WhatsApp para que los clientes te contacten');
+  } else if (!esTelefonoValido(datos.numeroWhatsapp)) {
     pendientes.push('El número de WhatsApp no tiene un formato válido');
   }
   return pendientes;

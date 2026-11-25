@@ -1,17 +1,32 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, Matches } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
+/**
+ * El formato de cada dato lo evalúa el dominio (SolicitudCambioRol), para que
+ * P03 responda 422 con la lista completa de `requisitosPendientes` en lugar de
+ * un 400 por el primer campo inválido.
+ */
 export class SolicitarCambioRolDto {
   /** Formato 00000000-0 */
-  @Transform(recortar)
-  @Matches(/^\d{8}-\d$/, { message: 'El DUI debe tener el formato 00000000-0' })
-  dui!: string;
-
-  /** Si se omite se usa el teléfono del perfil. */
   @IsOptional()
   @Transform(recortar)
-  @Matches(/^\+?[\d\s\-().]{8,20}$/, { message: 'El número de WhatsApp no tiene un formato válido' })
+  @IsString()
+  @MaxLength(20)
+  dui?: string;
+
+  /** Si se omite se usa el teléfono del perfil (o el enviado en `telefono`). */
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(25)
   numeroWhatsapp?: string;
+
+  /** Teléfono de contacto; completa el perfil si el cliente se registró sin él. */
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(25)
+  telefono?: string;
 }

@@ -52,7 +52,10 @@ export class PrismaCambioRolRepository implements CambioRolRepository {
         const vendedor = await tx.vendedor.create({
           data: { idUsuario: big(idUsuario), dui: datos.dui, numeroWhatsapp: datos.numeroWhatsapp },
         });
-        await tx.usuario.update({ where: { id: big(idUsuario) }, data: { rol: 'VENDEDOR' } });
+        await tx.usuario.update({
+          where: { id: big(idUsuario) },
+          data: { rol: 'VENDEDOR', ...(datos.telefono ? { telefono: datos.telefono } : {}) },
+        });
         const solicitud = await tx.solicitudCambioRol.create({
           data: { idUsuario: big(idUsuario), estado: 'APROBADA', fechaResolucion: new Date() },
         });
@@ -64,6 +67,17 @@ export class PrismaCambioRolRepository implements CambioRolRepository {
       }
       throw error;
     }
+  }
+
+  async registrarRechazo(idUsuario: number, requisitosPendientes: string[]): Promise<void> {
+    await this.prisma.solicitudCambioRol.create({
+      data: {
+        idUsuario: big(idUsuario),
+        estado: 'RECHAZADA',
+        fechaResolucion: new Date(),
+        requisitosPendientes: requisitosPendientes.join('; '),
+      },
+    });
   }
 
   async listarSolicitudes(idUsuario: number): Promise<SolicitudCambioRol[]> {
