@@ -39,7 +39,7 @@ docker compose up -d
 #    psql -U postgres -d plataforma_terrenos -v ON_ERROR_STOP=1 -f db/scriptdb.sql
 
 # 2. Variables de entorno
-cp .env.example .env        # ajusta DATABASE_URL y cambia JWT_SECRET (mín. 32 caracteres)
+cp .env.example .env        # DATABASE_URL usa postgres/123 (cámbiala si tu contraseña es otra) y cambia JWT_SECRET (mín. 32 caracteres)
 
 # 3. Dependencias y cliente Prisma
 npm install                 # ejecuta `prisma generate` en postinstall
