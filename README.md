@@ -32,11 +32,9 @@ Resultados registrados en [docs/pruebas.md](docs/pruebas.md) (última ejecución
 ## Puesta en marcha
 
 ```bash
-# 1. Base de datos (crea el esquema con db/scriptdb.sql)
-docker compose up -d
-#    o, sin Docker, con un PostgreSQL local:
-#    psql -U postgres -c "CREATE DATABASE plataforma_terrenos;"
-#    psql -U postgres -d plataforma_terrenos -v ON_ERROR_STOP=1 -f db/scriptdb.sql
+# 1. Base de datos vacía (PostgreSQL 16 local con psql en el PATH, o Docker)
+psql -U postgres -c "CREATE DATABASE plataforma_terrenos;"
+#    con Docker: docker compose up -d   (crea la base y aplica las migraciones)
 
 # 2. Variables de entorno
 cp .env.example .env        # DATABASE_URL usa postgres/123 (cámbiala si tu contraseña es otra) y cambia JWT_SECRET (mín. 32 caracteres)
@@ -44,6 +42,9 @@ cp .env.example .env        # DATABASE_URL usa postgres/123 (cámbiala si tu con
 # 3. Dependencias y cliente Prisma
 npm install                 # ejecuta `prisma generate` en postinstall
 npm run typecheck && npm run build   # opcional: comprobar que compila
+
+# 3b. Esquema: aplica en orden las migraciones pendientes de db/migraciones/
+npm run db:migrar           # npm run db:migrar -- --estado  muestra aplicadas/pendientes
 
 # 4. Usuario administrador inicial (ADMIN_EMAIL / ADMIN_PASSWORD del .env)
 npm run db:seed
@@ -56,9 +57,15 @@ npm run start:dev
 - Swagger: `http://localhost:3000/api/docs` (solo fuera de producción)
 - Salud: `GET /api/health`
 
-> Prisma solo se usa para `generate`; el esquema lo gobierna `db/scriptdb.sql`. No ejecutes `prisma migrate`.
+### Base de datos y migraciones
 
-Para reiniciar la base con Docker: `docker compose down -v && docker compose up -d` (el script SQL solo se ejecuta cuando el volumen es nuevo) y vuelve a correr `npm run db:seed`.
+- El esquema se versiona con scripts SQL numerados en `db/migraciones/` (`001_inicial.sql`, `002_...`). Cada uno corre en una transacción, se registra en la tabla `schema_migraciones` y, si se reejecuta, aborta sin cambiar nada.
+- `npm run db:migrar` aplica las pendientes con `psql` (lee `DATABASE_URL` del `.env`). También pueden abrirse y ejecutarse en orden desde el Query Tool de pgAdmin.
+- `db/scriptdb.sql` es **generado** (concatenación de todas las migraciones) para crear una base nueva de una vez. No se edita a mano: para cambiar el esquema se crea una migración nueva y se ejecuta `npm run db:generar-script`; `npm test` falla si quedó desactualizado.
+- **Base creada antes de las migraciones** (con el `scriptdb.sql` de v1.0.0): ejecuta una vez `npm run db:migrar -- --baseline 001` y luego `npm run db:migrar`.
+- Regla del equipo: una migración ya integrada en `main` no se modifica; se corrige con otra nueva.
+- Prisma solo se usa para `generate`. No ejecutes `prisma migrate`.
+- Docker usa la imagen `postgis/postgis:16-3.4` y aplica las migraciones solo cuando el volumen es nuevo; para reiniciar: `docker compose down -v && docker compose up -d` y vuelve a correr `npm run db:seed`.
 
 Producción: `npm run build && npm run start:prod` con `NODE_ENV=production` (Swagger se desactiva).
 

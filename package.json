@@ -17,6 +17,8 @@
     "prisma:generate": "prisma generate",
     "prisma:pull": "prisma db pull",
     "prisma:studio": "prisma studio",
+    "db:migrar": "node scripts/db-migrar.mjs",
+    "db:generar-script": "node scripts/db-generar-script.mjs",
     "db:seed": "ts-node --transpile-only prisma/seed.ts",
     "postinstall": "prisma generate"
   },

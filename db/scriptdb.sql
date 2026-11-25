@@ -1,13 +1,41 @@
 -- ============================================================
--- BASE DE DATOS: plataforma de comercializacion de terrenos
--- Motor: PostgreSQL
--- Basada en el diagrama UML del documento Lab3 Atis Correcion
+-- BASE DE DATOS: InmobiSV - plataforma de comercializacion de inmuebles
+-- Motor: PostgreSQL 16 (+ PostGIS desde la migracion 002)
 --
--- Primero ejecutar por separado, desde otra base de datos:
--- CREATE DATABASE plataforma_terrenos;
+-- ARCHIVO GENERADO: no editar a mano. Es la concatenacion de
+-- db/migraciones/*.sql (1 migraciones). Para cambiar el esquema, crea una
+-- migracion nueva y ejecuta: npm run db:generar-script
 --
--- Luego conectarse a plataforma_terrenos y ejecutar este archivo.
+-- Uso en una base NUEVA (vacia):
+--   psql -U postgres -c "CREATE DATABASE plataforma_terrenos;"
+--   psql -U postgres -d plataforma_terrenos -v ON_ERROR_STOP=1 -f db/scriptdb.sql
+-- Para una base existente usa: npm run db:migrar
 -- ============================================================
+
+-- >>>>>>>>>>>>>>>>>>>> 001_inicial.sql
+
+-- ============================================================
+-- Migracion 001 - Esquema inicial (v1.0.0)
+-- Basada en el diagrama UML del documento Lab3 Atis Correcion.
+-- Ejecutar conectado a la base plataforma_terrenos (psql o pgAdmin).
+-- Reejecutarla no cambia nada: la guarda aborta la transaccion.
+-- ============================================================
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS schema_migraciones (
+    version      VARCHAR(10) PRIMARY KEY,
+    nombre       VARCHAR(100) NOT NULL,
+    aplicada_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    aplicada_por TEXT NOT NULL DEFAULT current_user
+);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM schema_migraciones WHERE version = '001') THEN
+    RAISE EXCEPTION 'La migracion 001 (inicial) ya esta aplicada';
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------
 -- 1. USUARIOS Y PERFILES
@@ -253,9 +281,9 @@ CREATE INDEX idx_sesiones_usuario_activa
 CREATE INDEX idx_solicitudes_usuario_estado
     ON solicitudes_cambio_rol(id_usuario, estado);
 
--- ============================================================
--- FIN DEL SCRIPT
--- ============================================================
+INSERT INTO schema_migraciones (version, nombre) VALUES ('001', 'inicial');
+
+COMMIT;
 
 -- NOTAS DE IMPLEMENTACION:
 -- 1. password_hash debe contener el resultado de Argon2id o bcrypt
