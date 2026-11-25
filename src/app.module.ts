@@ -14,6 +14,8 @@ import { PublicacionesModule } from './modules/publicaciones/publicaciones.modul
 import { VerificacionModule } from './modules/verificacion/verificacion.module';
 import { AllExceptionsFilter } from './shared/infrastructure/http/all-exceptions.filter';
 import { PrismaModule } from './shared/infrastructure/prisma/prisma.module';
+import { CsrfGuard } from './shared/infrastructure/security/csrf.guard';
+import { SeguridadWebModule } from './shared/infrastructure/security/seguridad-web.module';
 
 @Module({
   imports: [
@@ -21,6 +23,7 @@ import { PrismaModule } from './shared/infrastructure/prisma/prisma.module';
     // Límite general por IP; los endpoints sensibles (login, registro, subidas) declaran uno más estricto.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     PrismaModule,
+    SeguridadWebModule,
     AuthModule,
     CambioRolModule,
     PublicacionesModule,
@@ -34,6 +37,8 @@ import { PrismaModule } from './shared/infrastructure/prisma/prisma.module';
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // CSRF para peticiones autenticadas por cookie (las de Bearer no lo necesitan).
+    { provide: APP_GUARD, useClass: CsrfGuard },
   ],
 })
 export class AppModule {}

@@ -220,6 +220,44 @@ N_AVISOS="$(echo "$BODY" | jq "[.. | objects | select(.tipo? == \"BAJA_PRECIO\" 
 check F48 "Dos bajas seguidas ($A/$B, avisos $NA+$NB) -> una notificación por baja, sin duplicados ($N_AVISOS)" \
   '[ "$A" = 200 ] && [ "$B" = 200 ] && [ "$NA" = 1 ] && [ "$NB" = 1 ] && [ "$N_AVISOS" = 2 ]'
 
+echo "== Fase 2: sesión por cookie HttpOnly + CSRF =="
+JAR="$TMP/cookies.txt"
+# ck MÉTODO RUTA [JSON] [cabeceras extra...] — petición del "navegador" con la cookie jar
+ck() {
+  local metodo="$1" ruta="$2" datos="${3:-}"; shift 3 2>/dev/null || shift $#
+  local args=(-s -o "$TMP/body" -D "$TMP/headers" -w '%{http_code}' -b "$JAR" -c "$JAR" -X "$metodo" "$API$ruta" "$@")
+  [ -n "$datos" ] && args+=(-H 'Content-Type: application/json' -d "$datos")
+  STATUS="$(curl "${args[@]}")"; BODY="$(cat "$TMP/body")"
+}
+ck POST /auth/login "{\"correo\":\"$CLI2\",\"password\":\"Clave12345\"}"
+SETCK="$(grep -i '^set-cookie: inmobisv_sesion=' "$TMP/headers")"; CSRF="$(j .csrfToken)"; S1="$STATUS"
+ck GET /auth/me ""
+check F49 "Login con cookie ($S1): Set-Cookie HttpOnly y /auth/me con la cookie -> 200" \
+  '[ "$S1" = 200 ] && echo "$SETCK" | grep -qi httponly && echo "$SETCK" | grep -qi "path=/api" && [ "$STATUS" = 200 ]'
+
+ck PATCH /auth/me '{"nombreCompleto":"Con Cookie"}'; A="$STATUS"
+ck PATCH /auth/me '{"nombreCompleto":"Con Cookie"}' -H "X-CSRF-Token: falso"; B="$STATUS"
+ck GET /auth/csrf ""; CSRF2="$(j .csrfToken)"
+ck PATCH /auth/me '{"nombreCompleto":"Con Cookie"}' -H "X-CSRF-Token: $CSRF2"; C="$STATUS"
+check F50 "Cookie sin token ($A) / token falso ($B) / token de /auth/csrf ($C) -> 403/403/200" \
+  '[ "$A" = 403 ] && [ "$B" = 403 ] && [ "$C" = 200 ] && [ "$CSRF2" = "$CSRF" ]'
+
+req PATCH /auth/me "$TOK_CLI2" '{"nombreCompleto":"Con Bearer"}'
+check F51 "Bearer sin cabecera CSRF -> 200" '[ "$STATUS" = 200 ]'
+
+ck PATCH /auth/me '{"nombreCompleto":"Ataque"}' -H "X-CSRF-Token: $CSRF" -H "Origin: https://evil.example"
+check F52 "Cookie + token válido pero Origin ajeno -> 403" '[ "$STATUS" = 403 ]'
+
+PRE_MALO="$(curl -s -D - -o /dev/null -X OPTIONS "$API/auth/me" -H 'Origin: https://evil.example' -H 'Access-Control-Request-Method: PATCH' | grep -ci '^access-control-allow-origin')"
+PRE_OK="$(curl -s -D - -o /dev/null -X OPTIONS "$API/auth/me" -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: PATCH' -H 'Access-Control-Request-Headers: x-csrf-token')"
+check F53 "Preflight CORS: origen ajeno sin Allow-Origin ($PRE_MALO); permitido con credentials" \
+  '[ "$PRE_MALO" = 0 ] && echo "$PRE_OK" | grep -qi "access-control-allow-credentials: true" && echo "$PRE_OK" | grep -qi "x-csrf-token"'
+
+cp "$JAR" "$TMP/cookies-viejas.txt"
+ck POST /auth/logout "" -H "X-CSRF-Token: $CSRF"; A="$STATUS"; BORRA="$(grep -i '^set-cookie: inmobisv_sesion=;' "$TMP/headers")"
+STATUS="$(curl -s -o /dev/null -w '%{http_code}' -b "$TMP/cookies-viejas.txt" "$API/auth/me")"
+check F54 "Logout por cookie ($A) borra la cookie y la cookie vieja da 401" '[ "$A" = 204 ] && [ -n "$BORRA" ] && [ "$STATUS" = 401 ]'
+
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"
 [ "$FAIL" = 0 ]

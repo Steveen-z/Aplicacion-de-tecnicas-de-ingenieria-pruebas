@@ -1,8 +1,11 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthUser } from '../../../shared/domain/auth-user';
-import { CurrentUser } from '../../../shared/infrastructure/security/decorators';
+import { CurrentUser, SinCsrf } from '../../../shared/infrastructure/security/decorators';
+import { SesionWebService } from '../../../shared/infrastructure/security/sesion-web.service';
+import { NOMBRE_COOKIE_SESION, leerCookie } from '../../../shared/infrastructure/security/session-cookie';
 import { JwtAuthGuard } from '../../../shared/infrastructure/security/jwt-auth.guard';
 import { ActualizarPerfilUseCase } from '../application/use-cases/actualizar-perfil.use-case';
 import { CerrarSesionUseCase } from '../application/use-cases/cerrar-sesion.use-case';
@@ -15,8 +18,13 @@ import { ActualizarPerfilDto, LoginDto, RegistroClienteDto, RegistroVendedorDto 
 
 const LIMITE_ESTRICTO = { default: { limit: 10, ttl: 60_000 } };
 
-function respuestaSesion({ usuario, token, expiraEn }: RegistroResultado) {
-  return { usuario, token, tipoToken: 'Bearer', expiraEn };
+/**
+ * Respuesta de inicio de sesión. El token va en el cuerpo (Swagger, scripts: Authorization: Bearer)
+ * y en la cookie HttpOnly (frontend). El frontend debe ignorar `token` y enviar `csrfToken`
+ * en la cabecera X-CSRF-Token en las peticiones POST/PATCH/PUT/DELETE.
+ */
+function respuestaSesion({ usuario, token, expiraEn }: RegistroResultado, csrfToken: string) {
+  return { usuario, token, tipoToken: 'Bearer', expiraEn, csrfToken };
 }
 
 @ApiTags('Autenticación')
@@ -30,35 +38,44 @@ export class AuthController {
     private readonly renovarSesion: RenovarSesionUseCase,
     private readonly obtenerPerfil: ObtenerPerfilUseCase,
     private readonly actualizarPerfil: ActualizarPerfilUseCase,
+    private readonly sesionWeb: SesionWebService,
   ) {}
+
+  private iniciar(res: Response, resultado: RegistroResultado) {
+    return respuestaSesion(resultado, this.sesionWeb.fijar(res, resultado.token));
+  }
 
   /** P02 - Registrar cuenta de cliente (devuelve la sesión ya iniciada). */
   @Post('registro/cliente')
   @Throttle(LIMITE_ESTRICTO)
-  async registroCliente(@Body() dto: RegistroClienteDto) {
-    return respuestaSesion(await this.registrarCliente.execute(dto));
+  @SinCsrf()
+  async registroCliente(@Body() dto: RegistroClienteDto, @Res({ passthrough: true }) res: Response) {
+    return this.iniciar(res, await this.registrarCliente.execute(dto));
   }
 
   /** P01 - Registrar cuenta de vendedor (devuelve la sesión ya iniciada). */
   @Post('registro/vendedor')
   @Throttle(LIMITE_ESTRICTO)
-  async registroVendedor(@Body() dto: RegistroVendedorDto) {
-    return respuestaSesion(await this.registrarVendedor.execute(dto));
+  @SinCsrf()
+  async registroVendedor(@Body() dto: RegistroVendedorDto, @Res({ passthrough: true }) res: Response) {
+    return this.iniciar(res, await this.registrarVendedor.execute(dto));
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async login(@Body() dto: LoginDto) {
-    return respuestaSesion(await this.iniciarSesion.execute(dto));
+  @SinCsrf()
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    return this.iniciar(res, await this.iniciarSesion.execute(dto));
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async logout(@CurrentUser() user: AuthUser): Promise<void> {
+  async logout(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response): Promise<void> {
     await this.cerrarSesion.execute(user.idSesion);
+    this.sesionWeb.borrar(res);
   }
 
   /** Cambia el token actual por uno nuevo (el anterior queda finalizado). */
@@ -66,9 +83,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async refresh(@CurrentUser() user: AuthUser) {
+  async refresh(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
     const { token, expiraEn } = await this.renovarSesion.execute(user);
-    return { token, tipoToken: 'Bearer', expiraEn };
+    return { token, tipoToken: 'Bearer', expiraEn, csrfToken: this.sesionWeb.fijar(res, token) };
+  }
+
+  /** Token CSRF de la sesión por cookie (p. ej. tras recargar la página). Con Bearer devuelve null. */
+  @Get('csrf')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  csrf(@Req() req: Request) {
+    const cookie = leerCookie(req.headers.cookie, NOMBRE_COOKIE_SESION);
+    return { csrfToken: cookie ? this.sesionWeb.csrf.generar(cookie) : null };
   }
 
   @Get('me')

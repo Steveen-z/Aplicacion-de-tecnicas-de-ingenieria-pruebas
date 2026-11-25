@@ -7,6 +7,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { origenesCors } from './shared/infrastructure/security/sesion-web.service';
 import { accesoLogMiddleware, requestIdMiddleware } from './shared/infrastructure/http/request-id.middleware';
 
 async function bootstrap(): Promise<void> {
@@ -24,14 +25,12 @@ async function bootstrap(): Promise<void> {
   // Las imágenes se sirven a un frontend en otro origen, por eso CORP "cross-origin".
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-  const origenes = (config.get<string>('CORS_ORIGINS') ?? 'http://localhost:5173,http://localhost:3001,http://localhost:4200')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
+  // Orígenes explícitos y credentials: el frontend envía la cookie de sesión (validateEnv rechaza '*').
   app.enableCors({
-    origin: origenes,
+    origin: origenesCors(config.get<string>('CORS_ORIGINS')),
+    credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-CSRF-Token'],
     exposedHeaders: ['X-Request-Id'],
     maxAge: 600,
   });

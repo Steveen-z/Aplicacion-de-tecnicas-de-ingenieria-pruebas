@@ -28,6 +28,22 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     errors.push('PORT debe ser un número de puerto válido');
   }
 
+  const sameSite = (read('COOKIE_SAMESITE') ?? 'lax').toLowerCase();
+  if (!['lax', 'strict', 'none'].includes(sameSite)) {
+    errors.push('COOKIE_SAMESITE debe ser lax, strict o none');
+  }
+  const cookieSecure = read('COOKIE_SECURE');
+  if (cookieSecure !== undefined && !['true', 'false'].includes(cookieSecure)) {
+    errors.push('COOKIE_SECURE debe ser true o false');
+  }
+  const segura = cookieSecure === 'true' || (cookieSecure === undefined && read('NODE_ENV') === 'production');
+  if (sameSite === 'none' && !segura) {
+    errors.push('COOKIE_SAMESITE=none exige COOKIE_SECURE=true (los navegadores rechazan la cookie)');
+  }
+  if ((read('CORS_ORIGINS') ?? '').split(',').some((o) => o.trim() === '*')) {
+    errors.push("CORS_ORIGINS no puede ser '*' porque la API acepta credenciales (cookie de sesión)");
+  }
+
   if (errors.length > 0) {
     throw new Error(`Configuración inválida:\n - ${errors.join('\n - ')}`);
   }
