@@ -1,8 +1,9 @@
-# PostgreSQL local para desarrollo. Ejecuta db/scriptdb.sql automáticamente
-# la primera vez que se crea el volumen.
+# PostgreSQL 16 + PostGIS para desarrollo. La primera vez que se crea el volumen
+# ejecuta db/migraciones/*.sql en orden. Con un volumen existente usa
+# `npm run db:migrar` (o `docker compose down -v` para empezar de cero).
 services:
   db:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
     container_name: inmobisv-db
     restart: unless-stopped
     environment:
@@ -13,7 +14,8 @@ services:
       - "5432:5432"
     volumes:
       - inmobisv-pgdata:/var/lib/postgresql/data
-      - ./db/scriptdb.sql:/docker-entrypoint-initdb.d/01-scriptdb.sql:ro
+      - ./db/migraciones:/docker-entrypoint-initdb.d/migraciones:ro
+      - ./db/docker-initdb.sh:/docker-entrypoint-initdb.d/20_migraciones.sh:ro
 
 volumes:
   inmobisv-pgdata:
