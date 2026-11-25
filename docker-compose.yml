@@ -1,0 +1,19 @@
+# PostgreSQL local para desarrollo. Ejecuta db/scriptdb.sql automáticamente
+# la primera vez que se crea el volumen.
+services:
+  db:
+    image: postgres:16
+    container_name: inmobisv-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: plataforma_terrenos
+    ports:
+      - "5432:5432"
+    volumes:
+      - inmobisv-pgdata:/var/lib/postgresql/data
+      - ./db/scriptdb.sql:/docker-entrypoint-initdb.d/01-scriptdb.sql:ro
+
+volumes:
+  inmobisv-pgdata:

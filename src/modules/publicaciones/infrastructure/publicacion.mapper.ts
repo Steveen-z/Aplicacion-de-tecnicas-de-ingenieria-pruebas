@@ -1,0 +1,102 @@
+import { Prisma } from '@prisma/client';
+import { dec, decOrNull, num } from '../../../shared/infrastructure/prisma/prisma-helpers';
+import {
+  EstadoPublicacion,
+  Fotografia,
+  Publicacion,
+  PublicacionResumen,
+  TipoOperacion,
+} from '../domain/publicacion';
+
+export const publicacionInclude = {
+  terreno: { include: { ubicacion: true } },
+  fotografias: { orderBy: { orden: 'asc' } },
+  vendedor: { include: { usuario: true } },
+} satisfies Prisma.PublicacionInclude;
+
+export const resumenInclude = {
+  terreno: { include: { ubicacion: true } },
+  fotografias: { orderBy: [{ esPortada: 'desc' }, { orden: 'asc' }], take: 1 },
+} satisfies Prisma.PublicacionInclude;
+
+type PublicacionRow = Prisma.PublicacionGetPayload<{ include: typeof publicacionInclude }>;
+type ResumenRow = Prisma.PublicacionGetPayload<{ include: typeof resumenInclude }>;
+type FotografiaRow = PublicacionRow['fotografias'][number];
+
+export function aFotografia(row: FotografiaRow): Fotografia {
+  return {
+    idFotografia: num(row.id),
+    urlImagen: row.urlImagen,
+    descripcion: row.descripcion,
+    orden: row.orden,
+    esPortada: row.esPortada,
+  };
+}
+
+export function aPublicacion(row: PublicacionRow): Publicacion {
+  const { terreno } = row;
+  if (!terreno || !terreno.ubicacion) {
+    // El esquema los exige (1 a 1), así que esto indica datos corruptos.
+    throw new Error(`La publicación ${row.id} no tiene terreno o ubicación`);
+  }
+  const { ubicacion } = terreno;
+
+  return {
+    idPublicacion: num(row.id),
+    idVendedor: num(row.idVendedor),
+    titulo: row.titulo,
+    descripcion: row.descripcion,
+    tipoOperacion: row.tipoOperacion as TipoOperacion,
+    precio: dec(row.precio),
+    estado: row.estado as EstadoPublicacion,
+    fechaPublicacion: row.fechaPublicacion,
+    fechaActualizacion: row.fechaActualizacion,
+    terreno: {
+      idTerreno: num(terreno.id),
+      areaM2: dec(terreno.areaM2),
+      largoM: decOrNull(terreno.largoM),
+      anchoM: decOrNull(terreno.anchoM),
+      tipoTerreno: terreno.tipoTerreno,
+      caracteristicas: terreno.caracteristicas,
+    },
+    ubicacion: {
+      departamento: ubicacion.departamento,
+      municipio: ubicacion.municipio,
+      distrito: ubicacion.distrito,
+      direccionDetalle: ubicacion.direccionDetalle,
+      latitud: decOrNull(ubicacion.latitud),
+      longitud: decOrNull(ubicacion.longitud),
+      latitudPublica: decOrNull(ubicacion.latitudPublica),
+      longitudPublica: decOrNull(ubicacion.longitudPublica),
+    },
+    fotografias: row.fotografias.map(aFotografia),
+    vendedor: {
+      idVendedor: num(row.vendedor.id),
+      idUsuario: num(row.vendedor.idUsuario),
+      nombre: row.vendedor.usuario.nombreCompleto,
+      telefono: row.vendedor.usuario.telefono,
+      numeroWhatsapp: row.vendedor.numeroWhatsapp,
+      estadoVerificacion: row.vendedor.estadoVerificacion,
+    },
+  };
+}
+
+export function aResumen(row: ResumenRow): PublicacionResumen {
+  const { terreno } = row;
+  if (!terreno || !terreno.ubicacion) {
+    throw new Error(`La publicación ${row.id} no tiene terreno o ubicación`);
+  }
+  return {
+    idPublicacion: num(row.id),
+    titulo: row.titulo,
+    tipoOperacion: row.tipoOperacion as TipoOperacion,
+    precio: dec(row.precio),
+    estado: row.estado as EstadoPublicacion,
+    areaM2: dec(terreno.areaM2),
+    departamento: terreno.ubicacion.departamento,
+    municipio: terreno.ubicacion.municipio,
+    distrito: terreno.ubicacion.distrito,
+    portadaUrl: row.fotografias[0]?.urlImagen ?? null,
+    fechaPublicacion: row.fechaPublicacion,
+  };
+}
