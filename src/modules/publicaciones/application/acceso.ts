@@ -19,7 +19,8 @@ export async function cargarPublicacionVisible(
   if (!publicacion) throw new NotFoundError('La publicación no existe');
 
   const privilegiado = esPropietarioOAdmin(user, publicacion);
-  if (publicacion.estado !== 'ACTIVA' && !privilegiado) {
+  const visibleAlPublico = publicacion.estado === 'ACTIVA' && publicacion.vendedor.estadoCuenta === 'ACTIVA';
+  if (!visibleAlPublico && !privilegiado) {
     throw new NotFoundError('La publicación no está disponible');
   }
   return { publicacion, privilegiado };

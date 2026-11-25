@@ -180,11 +180,12 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
     return aPublicacion(row);
   }
 
-  async cambiarEstado(idPublicacion: number, estado: EstadoPublicacion): Promise<void> {
-    await this.prisma.publicacion.update({
-      where: { id: big(idPublicacion) },
-      data: { estado, fechaActualizacion: new Date() },
+  async cambiarEstado(idPublicacion: number, desde: EstadoPublicacion, hacia: EstadoPublicacion): Promise<boolean> {
+    const { count } = await this.prisma.publicacion.updateMany({
+      where: { id: big(idPublicacion), estado: desde },
+      data: { estado: hacia, fechaActualizacion: new Date() },
     });
+    return count === 1;
   }
 
   async registrarCambioPrecio(
@@ -338,7 +339,11 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
     if (Object.keys(area).length > 0) terreno.areaM2 = area;
     if (Object.keys(ubicacion).length > 0) terreno.ubicacion = { is: ubicacion };
 
-    const where: Prisma.PublicacionWhereInput = { estado: 'ACTIVA' };
+    // Solo publicaciones activas de vendedores con la cuenta activa (un bloqueo las oculta).
+    const where: Prisma.PublicacionWhereInput = {
+      estado: 'ACTIVA',
+      vendedor: { usuario: { estadoCuenta: 'ACTIVA' } },
+    };
     if (f.tipoOperacion) where.tipoOperacion = f.tipoOperacion;
     if (Object.keys(precio).length > 0) where.precio = precio;
     if (Object.keys(terreno).length > 0) where.terreno = { is: terreno };

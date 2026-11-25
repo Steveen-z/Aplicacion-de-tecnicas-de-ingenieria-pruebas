@@ -1,5 +1,7 @@
+import { NuevaAuditoria } from '../../../shared/domain/auditoria';
 import { Injectable } from '@nestjs/common';
 import { NotFoundError } from '../../../shared/domain/errors';
+import { escribirAuditoria } from '../../../shared/infrastructure/prisma/auditoria-writer';
 import { PrismaService } from '../../../shared/infrastructure/prisma/prisma.service';
 import { big, num } from '../../../shared/infrastructure/prisma/prisma-helpers';
 import {
@@ -73,25 +75,31 @@ export class PrismaDocumentoRepository implements DocumentoRepository {
     idDocumento: number,
     revision: { estado: 'APROBADO' | 'RECHAZADO'; observaciones: string | null },
     resolverEstado: ResolverEstadoRevision,
-  ): Promise<ResultadoDocumento | null> {
+    construirAuditoria: (resultado: ResultadoDocumento) => NuevaAuditoria,
+  ): Promise<ResultadoDocumento | 'YA_REVISADO' | null> {
     return this.prisma.$transaction(async (tx) => {
-      const existente = await tx.documentoVerificacion.findUnique({ where: { id: big(idDocumento) } });
-      if (!existente) return null;
-
-      const actualizado = await tx.documentoVerificacion.update({
-        where: { id: existente.id },
+      // Condicional: si dos administradores revisan a la vez, solo uno gana.
+      const { count } = await tx.documentoVerificacion.updateMany({
+        where: { id: big(idDocumento), estadoRevision: 'PENDIENTE' },
         data: {
           estadoRevision: revision.estado,
           observaciones: revision.observaciones,
           fechaRevision: new Date(),
         },
       });
-      const documentos = await tx.documentoVerificacion.findMany({ where: { idVendedor: existente.idVendedor } });
+      if (count === 0) {
+        const existe = await tx.documentoVerificacion.count({ where: { id: big(idDocumento) } });
+        return existe ? 'YA_REVISADO' : null;
+      }
+      const actualizado = await tx.documentoVerificacion.findUniqueOrThrow({ where: { id: big(idDocumento) } });
+      const documentos = await tx.documentoVerificacion.findMany({ where: { idVendedor: actualizado.idVendedor } });
 
       const estadoVerificacion = resolverEstado(documentos.map(aResumen));
-      await tx.vendedor.update({ where: { id: existente.idVendedor }, data: { estadoVerificacion } });
+      await tx.vendedor.update({ where: { id: actualizado.idVendedor }, data: { estadoVerificacion } });
 
-      return { documento: aDocumento(actualizado), estadoVerificacion };
+      const resultado = { documento: aDocumento(actualizado), estadoVerificacion };
+      await escribirAuditoria(tx, construirAuditoria(resultado));
+      return resultado;
     });
   }
 

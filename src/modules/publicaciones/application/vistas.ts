@@ -34,6 +34,8 @@ export function construirVistaDetalle(publicacion: Publicacion, privilegiado: bo
           }
         : {}),
     },
+    // El motivo de moderación solo lo ven el dueño y el administrador.
+    ...(privilegiado ? { motivoRechazo: publicacion.motivoRechazo } : {}),
     fotografias: publicacion.fotografias,
     vendedor: {
       idVendedor: vendedor.idVendedor,

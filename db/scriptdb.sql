@@ -3,7 +3,7 @@
 -- Motor: PostgreSQL 16 (+ PostGIS desde la migracion 002)
 --
 -- ARCHIVO GENERADO: no editar a mano. Es la concatenacion de
--- db/migraciones/*.sql (3 migraciones). Para cambiar el esquema, crea una
+-- db/migraciones/*.sql (5 migraciones). Para cambiar el esquema, crea una
 -- migracion nueva y ejecuta: npm run db:generar-script
 --
 -- Uso en una base NUEVA (vacia):
@@ -348,6 +348,88 @@ BEGIN
 END $$;
 
 INSERT INTO schema_migraciones (version, nombre) VALUES ('002', 'postgis_ubicaciones');
+
+COMMIT;
+
+-- >>>>>>>>>>>>>>>>>>>> 004_auditoria.sql
+
+-- ============================================================
+-- Migracion 004 - Auditoria de operaciones administrativas
+-- Actor, accion, fecha y registro afectado (documento de arquitectura).
+-- Solo admite INSERT: UPDATE, DELETE y TRUNCATE lanzan excepcion.
+-- ============================================================
+
+BEGIN;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM schema_migraciones WHERE version = '004') THEN
+    RAISE EXCEPTION 'La migracion 004 (auditoria) ya esta aplicada';
+  END IF;
+END $$;
+
+CREATE TABLE auditoria (
+    id_auditoria BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_actor     BIGINT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE RESTRICT,
+    accion       VARCHAR(40) NOT NULL
+                 CHECK (accion IN ('USUARIO_BLOQUEADO', 'USUARIO_ACTIVADO',
+                                   'PUBLICACION_RECHAZADA', 'PUBLICACION_RESTAURADA',
+                                   'DOCUMENTO_APROBADO', 'DOCUMENTO_RECHAZADO')),
+    entidad      VARCHAR(20) NOT NULL CHECK (entidad IN ('USUARIO', 'PUBLICACION', 'DOCUMENTO')),
+    id_entidad   BIGINT NOT NULL,
+    detalle      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fecha        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- La accion corresponde a la entidad (USUARIO_* -> USUARIO, etc.).
+    CHECK (accion LIKE entidad || '\_%')
+);
+
+CREATE INDEX idx_auditoria_fecha ON auditoria(fecha DESC, id_auditoria DESC);
+CREATE INDEX idx_auditoria_entidad ON auditoria(entidad, id_entidad);
+CREATE INDEX idx_auditoria_actor ON auditoria(id_actor, fecha DESC);
+
+CREATE FUNCTION auditoria_inmutable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'La auditoria no se puede modificar ni borrar';
+END $$;
+
+CREATE TRIGGER trg_auditoria_inmutable
+    BEFORE UPDATE OR DELETE ON auditoria
+    FOR EACH ROW EXECUTE FUNCTION auditoria_inmutable();
+
+CREATE TRIGGER trg_auditoria_sin_truncate
+    BEFORE TRUNCATE ON auditoria
+    FOR EACH STATEMENT EXECUTE FUNCTION auditoria_inmutable();
+
+INSERT INTO schema_migraciones (version, nombre) VALUES ('004', 'auditoria');
+
+COMMIT;
+
+-- >>>>>>>>>>>>>>>>>>>> 005_moderacion_publicaciones.sql
+
+-- ============================================================
+-- Migracion 005 - Moderacion de publicaciones por el administrador
+-- Una publicacion RECHAZADA guarda el motivo; las demas no tienen motivo.
+-- ============================================================
+
+BEGIN;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM schema_migraciones WHERE version = '005') THEN
+    RAISE EXCEPTION 'La migracion 005 (moderacion_publicaciones) ya esta aplicada';
+  END IF;
+END $$;
+
+ALTER TABLE publicaciones
+    ADD COLUMN motivo_rechazo TEXT,
+    ADD CONSTRAINT ck_publicaciones_motivo_rechazo
+        CHECK (estado = 'RECHAZADA' OR motivo_rechazo IS NULL);
+
+-- Listado de administracion por estado.
+CREATE INDEX idx_publicaciones_estado_fecha ON publicaciones(estado, fecha_publicacion DESC);
+
+INSERT INTO schema_migraciones (version, nombre) VALUES ('005', 'moderacion_publicaciones');
 
 COMMIT;
 

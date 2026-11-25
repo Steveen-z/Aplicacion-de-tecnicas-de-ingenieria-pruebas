@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/env.validation';
 import { HealthController } from './health/health.controller';
+import { AdministracionModule } from './modules/administracion/administracion.module';
 import { ArchivosModule } from './modules/archivos/archivos.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CambioRolModule } from './modules/cambio-rol/cambio-rol.module';
@@ -32,6 +33,7 @@ import { SeguridadWebModule } from './shared/infrastructure/security/seguridad-w
     NotificacionesModule,
     ArchivosModule,
     VerificacionModule,
+    AdministracionModule,
   ],
   controllers: [HealthController],
   providers: [

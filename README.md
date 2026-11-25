@@ -109,6 +109,10 @@ Numeración de procesos según el documento Lab3.
 | Notificaciones | `GET /notificaciones`, `GET /notificaciones/no-leidas/conteo`, `PATCH /notificaciones/leer-todas`, `PATCH /notificaciones/:id/leida` | Autenticado |
 | Archivos | `POST /archivos/imagenes` (campo `archivo`, JPG/PNG/WEBP ≤5 MB), `POST /archivos/documentos` (PDF/JPG/PNG ≤8 MB, privado) | VENDEDOR (imágenes también ADMIN) |
 | Verificación | `POST/GET /vendedores/me/documentos`; admin: `GET /admin/documentos`, `GET /admin/documentos/:id/archivo`, `PATCH /admin/documentos/:id/revision` | VENDEDOR / ADMIN |
+| Perfil propio | `PATCH /auth/me` (`nombreCompleto`, `telefono`) | Autenticado |
+| Admin: usuarios | `GET /admin/usuarios` (`rol`, `estado`, `q`), `PATCH /admin/usuarios/:id/estado` (`ACTIVA`/`BLOQUEADA` + `motivo`; bloquear cierra sus sesiones y oculta sus publicaciones) | ADMIN |
+| Admin: moderación | `GET /admin/publicaciones` (cualquier estado), `PATCH /admin/publicaciones/:id/moderacion` (`RECHAZAR` con `motivo` / `RESTAURAR`; el vendedor recibe una notificación) | ADMIN |
+| Admin: auditoría | `GET /admin/auditoria` (`accion`, `entidad`, `idEntidad`, `idActor`, `desde`, `hasta`): bloqueos, activaciones, rechazos, restauraciones y revisiones de documentos; la tabla no admite cambios ni borrados | ADMIN |
 
 ## Notas para el frontend
 

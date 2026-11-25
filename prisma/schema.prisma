@@ -31,6 +31,7 @@ model Usuario {
   sesiones       Sesion[]
   solicitudes    SolicitudCambioRol[]
   notificaciones Notificacion[]
+  auditorias     Auditoria[]
 
   @@map("usuarios")
 }
@@ -113,6 +114,7 @@ model Publicacion {
   estado             String   @default("PENDIENTE") @db.VarChar(15)
   fechaPublicacion   DateTime @default(now()) @map("fecha_publicacion") @db.Timestamptz(6)
   fechaActualizacion DateTime @default(now()) @updatedAt @map("fecha_actualizacion") @db.Timestamptz(6)
+  motivoRechazo      String?  @map("motivo_rechazo")
 
   vendedor       Vendedor              @relation(fields: [idVendedor], references: [id], onDelete: Restrict)
   terreno        Terreno?
@@ -243,4 +245,23 @@ model DetalleComparacion {
 
   @@id([idComparacion, idPublicacion])
   @@map("detalle_comparacion")
+}
+
+/// Auditoria de operaciones administrativas (migracion 004). Solo INSERT: la base
+/// rechaza UPDATE/DELETE con un trigger.
+model Auditoria {
+  id        BigInt   @id @default(autoincrement()) @map("id_auditoria")
+  idActor   BigInt   @map("id_actor")
+  accion    String   @db.VarChar(40)
+  entidad   String   @db.VarChar(20)
+  idEntidad BigInt   @map("id_entidad")
+  detalle   Json     @default("{}")
+  fecha     DateTime @default(now()) @db.Timestamptz(6)
+
+  actor Usuario @relation(fields: [idActor], references: [id], onDelete: Restrict)
+
+  @@index([fecha(sort: Desc), id(sort: Desc)], map: "idx_auditoria_fecha")
+  @@index([entidad, idEntidad], map: "idx_auditoria_entidad")
+  @@index([idActor, fecha(sort: Desc)], map: "idx_auditoria_actor")
+  @@map("auditoria")
 }

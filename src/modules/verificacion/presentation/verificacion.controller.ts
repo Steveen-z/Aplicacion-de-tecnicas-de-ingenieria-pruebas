@@ -119,7 +119,11 @@ export class AdminDocumentosController {
   }
 
   @Patch(':id/revision')
-  revisarDocumento(@Param('id', ParseIdPipe) id: number, @Body() dto: RevisarDocumentoDto) {
-    return this.revisar.execute({ idDocumento: id, ...dto });
+  revisarDocumento(
+    @Param('id', ParseIdPipe) id: number,
+    @Body() dto: RevisarDocumentoDto,
+    @CurrentUser() admin: AuthUser,
+  ) {
+    return this.revisar.execute({ idActor: admin.idUsuario, idDocumento: id, ...dto });
   }
 }

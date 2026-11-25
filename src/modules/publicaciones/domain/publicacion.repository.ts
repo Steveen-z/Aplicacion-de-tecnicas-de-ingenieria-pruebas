@@ -49,7 +49,11 @@ export interface PublicacionRepository {
     paginacion: Paginacion,
   ): Promise<ResultadoListado>;
   actualizar(idPublicacion: number, cambios: CambiosPublicacion): Promise<Publicacion>;
-  cambiarEstado(idPublicacion: number, estado: EstadoPublicacion): Promise<void>;
+  /**
+   * UPDATE condicional (WHERE estado = desde): false si el estado ya no era `desde`
+   * (p. ej. el administrador la rechazó mientras tanto). Evita pisar cambios concurrentes.
+   */
+  cambiarEstado(idPublicacion: number, desde: EstadoPublicacion, hacia: EstadoPublicacion): Promise<boolean>;
   /**
    * En UNA transacción (con bloqueo de fila): lee precio y estado; si el precio es distinto,
    * actualiza publicaciones.precio, inserta en historial_precios y, si `aviso.decidir`
