@@ -13,3 +13,8 @@ type RequestConUsuario = Request & { user?: AuthUser };
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
   return ctx.switchToHttp().getRequest<RequestConUsuario>().user;
 });
+
+export const SIN_CSRF_KEY = 'sinCsrf';
+
+/** Excluye un endpoint de la protección CSRF (login y registro: no usan la sesión existente). */
+export const SinCsrf = () => SetMetadata(SIN_CSRF_KEY, true);

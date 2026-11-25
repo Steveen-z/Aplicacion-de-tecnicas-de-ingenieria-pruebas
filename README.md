@@ -106,7 +106,8 @@ Numeración de procesos según el documento Lab3.
 
 ## Notas para el frontend
 
-- Autenticación: `Authorization: Bearer <token>` (el token se devuelve en login/registro).
+- Autenticación del **frontend**: cookie HttpOnly `inmobisv_sesion` (la pone la API en login/registro/refresh; usar `fetch(..., { credentials: 'include' })`). En POST/PATCH/PUT/DELETE enviar la cabecera `X-CSRF-Token` con el `csrfToken` de la respuesta de login (o de `GET /auth/csrf` tras recargar la página); guardarlo en memoria e **ignorar** el `token` del cuerpo. El origen del frontend debe estar en `CORS_ORIGINS`.
+- Autenticación de **Swagger y scripts**: `Authorization: Bearer <token>` (el `token` del cuerpo); no necesita CSRF.
 - Errores: JSON con código HTTP, mensaje y, cuando aplica, `details` (p. ej. `requisitosPendientes` en P03). 400 = formato de la petición; 422 = regla de negocio.
 - P03: si el cliente se registró sin teléfono puede enviarlo en la misma solicitud (`telefono`).
 - Subir fotos: `POST /archivos/imagenes` → usar el `url` devuelto en `fotografias[].urlImagen` al crear/editar la publicación.
