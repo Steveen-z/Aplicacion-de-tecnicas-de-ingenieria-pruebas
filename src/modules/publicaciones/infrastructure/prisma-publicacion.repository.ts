@@ -6,6 +6,7 @@ import { big, dec, num } from '../../../shared/infrastructure/prisma/prisma-help
 import {
   CambioPrecio,
   CambiosPublicacion,
+  Cercania,
   EstadoPublicacion,
   FiltroPublicaciones,
   Fotografia,
@@ -13,6 +14,7 @@ import {
   NuevaPublicacion,
   OrdenPublicaciones,
   Publicacion,
+  PublicacionResumen,
 } from '../domain/publicacion';
 import {
   AvisoCambioPrecio,
@@ -29,13 +31,21 @@ import {
   resumenInclude,
 } from './publicacion.mapper';
 
-const ORDEN: Record<OrdenPublicaciones, Prisma.PublicacionOrderByWithRelationInput[]> = {
+// DISTANCIA no se ordena con Prisma: se ordena por la distancia calculada con PostGIS.
+const ORDEN: Record<Exclude<OrdenPublicaciones, 'DISTANCIA'>, Prisma.PublicacionOrderByWithRelationInput[]> = {
   RECIENTES: [{ fechaPublicacion: 'desc' }, { id: 'desc' }],
   PRECIO_ASC: [{ precio: 'asc' }, { id: 'desc' }],
   PRECIO_DESC: [{ precio: 'desc' }, { id: 'desc' }],
   AREA_ASC: [{ terreno: { areaM2: 'asc' } }, { id: 'desc' }],
   AREA_DESC: [{ terreno: { areaM2: 'desc' } }, { id: 'desc' }],
 };
+
+/** Tope de candidatas de una búsqueda por cercanía (protege memoria y tiempo de respuesta). */
+const MAX_CANDIDATAS = 2000;
+
+function conDistancia(resumen: PublicacionResumen, metros: number | undefined): PublicacionResumen {
+  return metros === undefined ? resumen : { ...resumen, distanciaKm: Math.round(metros / 100) / 10 };
+}
 
 @Injectable()
 export class PrismaPublicacionRepository implements PublicacionRepository {
@@ -76,17 +86,52 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
 
   async buscarActivas(filtro: FiltroPublicaciones, { page, limit }: Paginacion): Promise<ResultadoListado> {
     const where = this.construirWhere(filtro);
+
+    // Búsqueda por cercanía: PostGIS (índice GiST sobre el punto público) da las candidatas
+    // y su distancia; el resto de filtros se aplica con Prisma sobre esos ids.
+    let distancias: Map<bigint, number> | null = null;
+    if (filtro.cercania) {
+      distancias = await this.candidatasPorCercania(filtro.cercania);
+      where.id = { in: [...distancias.keys()] };
+    }
+
+    if (filtro.orden === 'DISTANCIA' && distancias) {
+      // Se ordena en memoria (máx. MAX_CANDIDATAS filas): suficiente para el volumen del prototipo.
+      const rows = await this.prisma.publicacion.findMany({ where, include: resumenInclude });
+      rows.sort((a, b) => distancias!.get(a.id)! - distancias!.get(b.id)! || Number(a.id - b.id));
+      const pagina = rows.slice((page - 1) * limit, page * limit);
+      return { items: pagina.map((r) => conDistancia(aResumen(r), distancias!.get(r.id))), total: rows.length };
+    }
+
     const [total, rows] = await this.prisma.$transaction([
       this.prisma.publicacion.count({ where }),
       this.prisma.publicacion.findMany({
         where,
-        orderBy: ORDEN[filtro.orden],
+        orderBy: ORDEN[filtro.orden === 'DISTANCIA' ? 'RECIENTES' : filtro.orden],
         skip: (page - 1) * limit,
         take: limit,
         include: resumenInclude,
       }),
     ]);
-    return { items: rows.map(aResumen), total };
+    return { items: rows.map((r) => conDistancia(aResumen(r), distancias?.get(r.id))), total };
+  }
+
+  /** ids de publicaciones activas cuyo punto público está dentro del radio, con su distancia en metros. */
+  private async candidatasPorCercania({ latitud, longitud, radioKm }: Cercania): Promise<Map<bigint, number>> {
+    const filas = await this.prisma.$queryRaw<{ id_publicacion: bigint; distancia_m: number }[]>(Prisma.sql`
+      WITH centro AS (
+        SELECT ST_SetSRID(ST_MakePoint(${longitud}::float8, ${latitud}::float8), 4326)::geography AS punto
+      )
+      SELECT p.id_publicacion, ST_Distance(u.punto_publico, centro.punto) AS distancia_m
+      FROM ubicaciones u
+      JOIN terrenos t ON t.id_terreno = u.id_terreno
+      JOIN publicaciones p ON p.id_publicacion = t.id_publicacion
+      CROSS JOIN centro
+      WHERE p.estado = 'ACTIVA'
+        AND ST_DWithin(u.punto_publico, centro.punto, ${radioKm * 1000}::float8)
+      ORDER BY distancia_m
+      LIMIT ${MAX_CANDIDATAS}`);
+    return new Map(filas.map((f) => [f.id_publicacion, Number(f.distancia_m)]));
   }
 
   async listarDeVendedor(

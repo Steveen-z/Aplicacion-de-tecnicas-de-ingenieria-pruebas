@@ -44,12 +44,13 @@ check() {
 }
 j() { echo "$BODY" | jq -r "$1"; }
 
-publicacion_json() { # título operación precio departamento área url
+publicacion_json() { # título operación precio departamento área url [lat] [lng]
+  local lat="${7:-13.4833333}" lng="${8:--88.1833333}"
   cat <<EOF
 {"titulo":"$1","descripcion":"Terreno plano con acceso a calle pavimentada.",
  "tipoOperacion":"$2","precio":$3,
  "terreno":{"areaM2":$5,"largoM":20,"anchoM":25,"tipoTerreno":"Urbano"},
- "ubicacion":{"departamento":"$4","municipio":"Municipio Prueba","latitud":13.4833333,"longitud":-88.1833333},
+ "ubicacion":{"departamento":"$4","municipio":"Municipio Prueba","latitud":$lat,"longitud":$lng},
  "fotografias":[{"urlImagen":"$6","esPortada":true}]}
 EOF
 }
@@ -257,6 +258,33 @@ cp "$JAR" "$TMP/cookies-viejas.txt"
 ck POST /auth/logout "" -H "X-CSRF-Token: $CSRF"; A="$STATUS"; BORRA="$(grep -i '^set-cookie: inmobisv_sesion=;' "$TMP/headers")"
 STATUS="$(curl -s -o /dev/null -w '%{http_code}' -b "$TMP/cookies-viejas.txt" "$API/auth/me")"
 check F54 "Logout por cookie ($A) borra la cookie y la cookie vieja da 401" '[ "$A" = 204 ] && [ -n "$BORRA" ] && [ "$STATUS" = 401 ]'
+
+echo "== Fase 2: PostGIS y búsqueda por cercanía =="
+# Publicación lejana: San Salvador (~110 km de San Miguel, donde están las demás)
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Terreno en San Salvador $SUF" VENTA 50000 "San Salvador" 600 "$URL" 13.6929403 -89.2181911)"
+PUB_LEJOS="$(j .idPublicacion)"
+req GET "/publicaciones?lat=13.48&lng=-88.18&radioKm=5&limit=50"
+IDS="$(echo "$BODY" | jq -c '[.items[].idPublicacion]')"
+check F41 "Radio 5 km desde San Miguel: incluye PUB1, excluye la de San Salvador; distanciaKm ≤ 5; sin exactas; ≤2 decimales" \
+  '[ "$STATUS" = 200 ] && echo "$IDS" | jq -e "index($PUB1) != null and index($PUB_LEJOS) == null" >/dev/null && echo "$BODY" | jq -e "all(.items[]; .distanciaKm <= 5 and .latitud != null and (has(\"latitudExacta\") | not) and ((.latitud * 100 | . == floor)))" >/dev/null'
+req GET "/publicaciones?lat=13.69&lng=-89.21&radioKm=5&limit=50"
+check F41b "Radio 5 km desde San Salvador: aparece la de San Salvador y no PUB1" \
+  'echo "$BODY" | jq -e "[.items[].idPublicacion] | index($PUB_LEJOS) != null and index($PUB1) == null" >/dev/null'
+req GET "/publicaciones?lat=13.48&lng=-88.18&radioKm=50&precioMax=20000&tipoOperacion=VENTA&limit=50"
+check F42 "Radio combinado con precioMax y tipoOperacion: todas cumplen" \
+  '[ "$STATUS" = 200 ] && [ "$(j .total)" -gt 0 ] && echo "$BODY" | jq -e "all(.items[]; .precio <= 20000 and .tipoOperacion == \"VENTA\" and .distanciaKm <= 50)" >/dev/null'
+# Publicación intermedia en Usulután (~30 km de San Miguel) para que el orden no sea trivial
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Terreno en Usulután centro $SUF" VENTA 12000 "Usulután" 400 "$URL" 13.3500000 -88.4400000)"
+PUB_MEDIO="$(j .idPublicacion)"
+req GET "/publicaciones?lat=13.48&lng=-88.18&radioKm=50&orden=DISTANCIA&q=$SUF&limit=50"
+check F43 "orden=DISTANCIA: ascendente; la de Usulután (~30 km) va después de las de San Miguel" \
+  'echo "$BODY" | jq -e "[.items[].distanciaKm] as \$d | \$d == (\$d | sort) and \$d[0] < 2 and (.items | map(.idPublicacion) | index($PUB_MEDIO)) == (.items | length - 1) and .items[-1].distanciaKm > 25" >/dev/null'
+req GET "/publicaciones?lat=13.48&lng=-88.18&radioKm=100"; A="$STATUS"
+req GET "/publicaciones?lat=13.48"; B="$STATUS"
+req GET "/publicaciones?orden=DISTANCIA"; C="$STATUS"
+check F44 "radioKm=100 ($A), solo lat ($B), DISTANCIA sin centro ($C) -> 400" '[ "$A" = 400 ] && [ "$B" = 400 ] && [ "$C" = 400 ]'
+req GET /health
+check F55 "GET /health incluye la versión de PostGIS y el esquema" '[ "$STATUS" = 200 ] && [ "$(j .postgis)" != null ] && echo "$BODY" | jq -e ".esquema | index(\"002\") != null" >/dev/null'
 
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"

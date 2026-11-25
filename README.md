@@ -59,6 +59,12 @@ npm run start:dev
 
 ### Base de datos y migraciones
 
+**PostGIS (obligatorio desde la migración 002).** La búsqueda por cercanía usa la extensión PostGIS:
+- Windows: menú Inicio → PostgreSQL 16 → **Application Stack Builder** → elige tu servidor (puerto 5432) → *Spatial Extensions* → **PostGIS 3.x Bundle for PostgreSQL 16** → instalar con las opciones por defecto. Comprueba en pgAdmin o psql: `SELECT name, default_version FROM pg_available_extensions WHERE name = 'postgis';`
+- Ubuntu/Debian: `sudo apt install postgresql-16-postgis-3`. macOS (Homebrew): `brew install postgis`.
+- Docker: la imagen `postgis/postgis:16-3.4` ya lo incluye.
+- La migración 002 crea la extensión; si PostGIS no está instalado, falla con un mensaje claro y `GET /api/health` responde 503 indicándolo.
+
 - El esquema se versiona con scripts SQL numerados en `db/migraciones/` (`001_inicial.sql`, `002_...`). Cada uno corre en una transacción, se registra en la tabla `schema_migraciones` y, si se reejecuta, aborta sin cambiar nada.
 - `npm run db:migrar` aplica las pendientes con `psql` (lee `DATABASE_URL` del `.env`). También pueden abrirse y ejecutarse en orden desde el Query Tool de pgAdmin.
 - `db/scriptdb.sql` es **generado** (concatenación de todas las migraciones) para crear una base nueva de una vez. No se edita a mano: para cambiar el esquema se crea una migración nueva y se ejecuta `npm run db:generar-script`; `npm test` falla si quedó desactualizado.
@@ -92,7 +98,7 @@ Numeración de procesos según el documento Lab3.
 | P02 Registrar cliente | `POST /auth/registro/cliente` | Público |
 | Sesión | `POST /auth/login`, `/auth/logout`, `/auth/refresh`, `GET /auth/me` | Público / autenticado |
 | P03 Cambio de rol | `POST /cambio-rol/solicitudes` (`dui`, `numeroWhatsapp?`, `telefono?`), `GET /cambio-rol/solicitudes` | CLIENTE |
-| P04 Consultar / P05 Filtrar | `GET /publicaciones` (filtros: `departamento`, `municipio`, `tipoOperacion`, `precioMin/Max`, `areaMin/Max`, `q`, `orden`, `page`, `limit`) | Público |
+| P04 Consultar / P05 Filtrar | `GET /publicaciones` (filtros: `departamento`, `municipio`, `tipoOperacion`, `precioMin/Max`, `areaMin/Max`, `q`, `orden`, `page`, `limit`; **cercanía**: `lat`, `lng`, `radioKm` (0,1–50) juntos y `orden=DISTANCIA`). Cada item trae `latitud`/`longitud` públicas (aproximadas, para el mapa) y `distanciaKm` | Público |
 | P06 Detalle y ubicación | `GET /publicaciones/:id`, `GET /publicaciones/:id/historial-precios` | Público (exactas solo dueño/admin) |
 | P07 Contacto WhatsApp | `GET /publicaciones/:id/whatsapp` | Autenticado |
 | P08 Publicar | `POST /publicaciones`, fotografías (`POST/DELETE /publicaciones/:id/fotografias…`, `PATCH …/portada`) | VENDEDOR |
