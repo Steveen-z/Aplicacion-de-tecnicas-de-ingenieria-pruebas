@@ -11,13 +11,15 @@ import {
   ListarComparacionesUseCase,
   ObtenerComparacionUseCase,
 } from '../application/comparaciones.use-cases';
-import { MAX_TERRENOS_COMPARACION } from '../domain/comparacion';
+
+/** Tope técnico del cuerpo; la regla de negocio (2 a 4 terrenos) la valida el dominio y responde 422. */
+const MAX_IDS_PETICION = 20;
 
 export class CrearComparacionDto {
   /** Ids de las publicaciones a comparar (de 2 a 4). */
   @IsArray()
-  @ArrayMinSize(2)
-  @ArrayMaxSize(MAX_TERRENOS_COMPARACION)
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_IDS_PETICION)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
