@@ -73,6 +73,10 @@ npm run start:dev
 - Prisma solo se usa para `generate`. No ejecutes `prisma migrate`.
 - Docker usa la imagen `postgis/postgis:16-3.4` y aplica las migraciones solo cuando el volumen es nuevo; para reiniciar: `docker compose down -v && docker compose up -d` y vuelve a correr `npm run db:seed`.
 
+### Mantenimiento: archivos sin uso
+
+`npm run archivos:limpiar` borra las imágenes y documentos subidos que nadie usa desde hace más de 24 h (y archivos del disco sin registro). `-- --simulacion` solo informa; `-- --horas 48` cambia la antigüedad. Se puede repetir sin riesgo y programar (cron o Programador de tareas de Windows).
+
 Producción: `npm run build && npm run start:prod` con `NODE_ENV=production` (Swagger se desactiva).
 
 ## Arquitectura
@@ -120,7 +124,7 @@ Numeración de procesos según el documento Lab3.
 - Autenticación de **Swagger y scripts**: `Authorization: Bearer <token>` (el `token` del cuerpo); no necesita CSRF.
 - Errores: JSON con código HTTP, mensaje y, cuando aplica, `details` (p. ej. `requisitosPendientes` en P03). 400 = formato de la petición; 422 = regla de negocio.
 - P03: si el cliente se registró sin teléfono puede enviarlo en la misma solicitud (`telefono`).
-- Subir fotos: `POST /archivos/imagenes` → usar el `url` devuelto en `fotografias[].urlImagen` al crear/editar la publicación.
+- Subir fotos: `POST /archivos/imagenes` → usar el `url` devuelto en `fotografias[].urlImagen` al crear/editar la publicación. Solo se aceptan imágenes subidas a la plataforma por el mismo vendedor (URL externa → 422; imagen de otro usuario → 403). Lo mismo aplica a los documentos de verificación.
 - Las coordenadas exactas solo las ve el dueño; el público recibe coordenadas aproximadas.
 
 ## Decisiones y límites

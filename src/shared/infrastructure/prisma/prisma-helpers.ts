@@ -12,3 +12,8 @@ export const decOrNull = (v: Prisma.Decimal | null): number | null => (v === nul
 export function esViolacionUnica(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
+
+/** Violación de clave foránea (p. ej. el archivo referenciado se borró justo antes). */
+export function esViolacionFk(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003';
+}

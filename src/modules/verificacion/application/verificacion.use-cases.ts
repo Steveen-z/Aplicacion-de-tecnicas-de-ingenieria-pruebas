@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ResolverArchivosService } from '../../archivos/application/resolver-archivos.service';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/domain/errors';
 import { FILE_STORAGE, FileStorage, esRutaArchivoValida } from '../../../shared/domain/file-storage.port';
@@ -21,14 +22,19 @@ function exigirVendedor(user: AuthUser): number {
 /** Documentos de identidad/propiedad que el vendedor envía para verificar su cuenta (UML: DocumentoVerificacion). */
 @Injectable()
 export class EnviarDocumentoUseCase {
-  constructor(@Inject(DOCUMENTO_REPOSITORY) private readonly repo: DocumentoRepository) {}
+  constructor(
+    @Inject(DOCUMENTO_REPOSITORY) private readonly repo: DocumentoRepository,
+    private readonly archivos: ResolverArchivosService,
+  ) {}
 
-  execute(input: { user: AuthUser; tipoDocumento: string; rutaDocumento: string }): Promise<ResultadoDocumento> {
+  async execute(input: { user: AuthUser; tipoDocumento: string; rutaDocumento: string }): Promise<ResultadoDocumento> {
     const idVendedor = exigirVendedor(input.user);
     // La ruta debe ser una devuelta por POST /archivos/documentos, no una ruta arbitraria.
     if (!esRutaArchivoValida(input.rutaDocumento, 'documentos')) {
       throw new BusinessRuleError('La ruta del documento no es válida. Súbelo primero con POST /archivos/documentos');
     }
+    // Solo un documento subido por el propio vendedor (antes se aceptaba la ruta de otro usuario).
+    await this.archivos.verificarDocumento(input.user.idUsuario, input.rutaDocumento);
     return this.repo.registrarDocumento(idVendedor, input.tipoDocumento, input.rutaDocumento, estadoTrasEnvio);
   }
 }

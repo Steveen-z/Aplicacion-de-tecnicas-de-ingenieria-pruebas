@@ -137,10 +137,16 @@ export interface FiltroPublicaciones {
   orden: OrdenPublicaciones;
 }
 
-export interface NuevaFotografia {
+/** Foto tal como la envía el vendedor (URL devuelta por POST /archivos/imagenes). */
+export interface FotografiaEntrada {
   urlImagen: string;
   descripcion: string | null;
   esPortada: boolean;
+}
+
+/** Foto ya verificada: `ruta` es la clave del archivo registrado del propio vendedor. */
+export interface NuevaFotografia extends FotografiaEntrada {
+  ruta: string;
 }
 
 export interface NuevaPublicacion {

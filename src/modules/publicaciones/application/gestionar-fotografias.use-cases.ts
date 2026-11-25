@@ -1,16 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
-import { Fotografia, NuevaFotografia } from '../domain/publicacion';
+import { ResolverArchivosService } from '../../archivos/application/resolver-archivos.service';
+import { Fotografia, FotografiaEntrada } from '../domain/publicacion';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
 import { MAX_FOTOGRAFIAS, puedeEditarse } from '../domain/publicacion.rules';
 import { cargarPublicacionPropia } from './acceso';
 
 @Injectable()
 export class AgregarFotografiasUseCase {
-  constructor(@Inject(PUBLICACION_REPOSITORY) private readonly repo: PublicacionRepository) {}
+  constructor(
+    @Inject(PUBLICACION_REPOSITORY) private readonly repo: PublicacionRepository,
+    private readonly archivos: ResolverArchivosService,
+  ) {}
 
-  async execute(input: { user: AuthUser; idPublicacion: number; fotografias: NuevaFotografia[] }): Promise<Fotografia[]> {
+  async execute(input: { user: AuthUser; idPublicacion: number; fotografias: FotografiaEntrada[] }): Promise<Fotografia[]> {
     const publicacion = await cargarPublicacionPropia(this.repo, input.idPublicacion, input.user);
     if (!puedeEditarse(publicacion.estado)) {
       throw new BusinessRuleError('Una publicación vendida, rentada o rechazada ya no se puede editar');
@@ -18,7 +22,11 @@ export class AgregarFotografiasUseCase {
     if (publicacion.fotografias.length + input.fotografias.length > MAX_FOTOGRAFIAS) {
       throw new BusinessRuleError(`Solo se permiten hasta ${MAX_FOTOGRAFIAS} fotografías por publicación`);
     }
-    return this.repo.agregarFotografias(input.idPublicacion, input.fotografias);
+    const rutas = await this.archivos.resolverImagenes(input.user.idUsuario, input.fotografias.map((f) => f.urlImagen));
+    return this.repo.agregarFotografias(
+      input.idPublicacion,
+      input.fotografias.map((f, i) => ({ ...f, ruta: rutas[i].ruta })),
+    );
   }
 }
 
