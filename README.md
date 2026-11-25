@@ -1,6 +1,6 @@
 # InmobiSV – Backend
 
-**Versión 1.0.0** · Proyecto de Ingeniería de Software, Universidad de Oriente.
+**Versión 1.1.0** · Proyecto de Ingeniería de Software, Universidad de Oriente. Cambios por versión en [CHANGELOG.md](CHANGELOG.md).
 
 ## Descripción
 
@@ -8,7 +8,7 @@ InmobiSV es una plataforma para publicar, buscar, comparar y contactar vendedore
 
 ## Tecnologías
 
-NestJS 11 · Prisma 6 · TypeScript · PostgreSQL 16 · JWT · bcrypt · Swagger · Docker Compose · Arquitectura limpia por módulo.
+NestJS 11 (sobre Express) · Prisma 6 · TypeScript · PostgreSQL 16 + PostGIS 3 · JWT (Bearer y cookie HttpOnly con CSRF) · bcrypt · Swagger · Docker Compose · Arquitectura limpia por módulo.
 
 ## Requisitos
 
@@ -23,11 +23,11 @@ Carpeta [`docs/`](docs): [arquitectura](docs/arquitectura.md), [pruebas](docs/pr
 ## Pruebas
 
 ```bash
-npm test                              # 38 pruebas unitarias: dominio + casos de uso con repositorios falsos
-bash scripts/pruebas-funcionales.sh   # F01–F22 contra la API levantada (requiere el admin del seed)
+npm test                              # 82 pruebas unitarias: dominio, casos de uso con repositorios falsos, seguridad y esquema
+bash scripts/pruebas-funcionales.sh   # F01–F56 contra la API levantada (requiere el admin del seed; PRUEBA_LIMPIEZA=1 incluye F56)
 ```
 
-Resultados registrados en [docs/pruebas.md](docs/pruebas.md) (última ejecución: 2026-11-25, 38/38 unitarias y 26/26 comprobaciones funcionales).
+Resultados registrados en [docs/pruebas.md](docs/pruebas.md) (última ejecución: 2026-11-25 sobre una base nueva, 82/82 unitarias y 61/61 comprobaciones funcionales). El script crea datos de prueba; el límite de login es 5/min, así que para repetirlo seguido espera un minuto o reinicia la API.
 
 ## Puesta en marcha
 
@@ -133,6 +133,8 @@ Numeración de procesos según el documento Lab3.
 - Puntos de interés cercanos vía Overpass (OpenStreetMap); si falla, la valoración queda como `SIN_DATOS`.
 - El DUI se valida solo por formato (`########-#`), sin dígito verificador.
 - P03: el cambio de rol se aplica automáticamente al cumplir requisitos (sin aprobación de administrador).
-- Las notificaciones de baja de precio no son atómicas con la actualización del precio.
+- Las notificaciones son internas (tabla `notificaciones`): no se envían correos ni push.
+- Al bloquear un usuario sus publicaciones se ocultan (no se modifican); al reactivarlo reaparecen.
+- La distancia de la búsqueda por cercanía se mide contra el punto público (~1 km de precisión), así que es aproximada.
 - Las pruebas unitarias cubren dominio y casos de uso; los repositorios Prisma se verifican con el script funcional contra una BD real, no con pruebas de integración automatizadas.
-- No existe endpoint para editar el perfil (nombre/teléfono) fuera de P03.
+- El frontend (React + Vite, según el documento de arquitectura) todavía no existe en este repositorio.

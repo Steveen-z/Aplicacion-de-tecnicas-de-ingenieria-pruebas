@@ -1,6 +1,6 @@
 {
   "name": "inmobisv-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Backend de la plataforma InmobiSV (comercialización de terrenos en El Salvador) - NestJS + Prisma + PostgreSQL, arquitectura limpia",
   "license": "UNLICENSED",
