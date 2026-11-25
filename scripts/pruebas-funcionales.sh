@@ -102,6 +102,13 @@ req POST /cambio-rol/solicitudes "$TOK_CLI" "{}"
 check F07b "Cliente sin DUI -> 422 con requisitosPendientes" \
   '[ "$STATUS" = 422 ] && [ "$(j ".details.requisitosPendientes | length")" -gt 0 ]'
 
+req POST /cambio-rol/solicitudes "$TOK_CLI" "{\"dui\":\"${SUF:2:8}-3\",\"telefono\":\"7333-4444\"}"; S1="$STATUS"
+req GET /auth/me "$TOK_CLI"
+check F07c "Cliente sin teléfono lo completa en la solicitud ($S1) -> VENDEDOR" '[ "$S1" = 201 ] && [ "$(j .rol)" = VENDEDOR ]'
+# El cliente de F01 sigue siendo usado como comprador en F10, F12, F18–F21: se usa uno nuevo
+req POST /auth/registro/cliente "" "{\"nombreCompleto\":\"Cliente Comprador\",\"correo\":\"comprador$SUF@prueba.sv\",\"password\":\"Clave12345\"}"
+TOK_CLI="$(j .token)"
+
 CLI2="cliente2$SUF@prueba.sv"
 req POST /auth/registro/cliente "" "{\"nombreCompleto\":\"Cliente Completo\",\"correo\":\"$CLI2\",\"password\":\"Clave12345\",\"telefono\":\"7222-3333\"}"
 TOK_CLI2="$(j .token)"
