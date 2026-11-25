@@ -13,11 +13,9 @@ import { HistorialPreciosUseCase } from './application/historial-precios.use-cas
 import { ListarMisPublicacionesUseCase } from './application/listar-mis-publicaciones.use-case';
 import { ListarPublicacionesUseCase } from './application/listar-publicaciones.use-case';
 import { ObtenerDetalleUseCase } from './application/obtener-detalle.use-case';
-import { BAJA_PRECIO_NOTIFIER } from './domain/baja-precio-notifier.port';
 import { PUBLICACION_REPOSITORY } from './domain/publicacion.repository';
 import { SERVICIO_MAPAS } from './domain/servicio-mapas.port';
 import { OverpassServicioMapas } from './infrastructure/overpass-servicio-mapas';
-import { PrismaBajaPrecioNotifier } from './infrastructure/prisma-baja-precio-notifier';
 import { PrismaPublicacionRepository } from './infrastructure/prisma-publicacion.repository';
 import { PublicacionesController } from './presentation/publicaciones.controller';
 
@@ -38,7 +36,6 @@ import { PublicacionesController } from './presentation/publicaciones.controller
     DefinirPortadaUseCase,
     { provide: PUBLICACION_REPOSITORY, useClass: PrismaPublicacionRepository },
     { provide: SERVICIO_MAPAS, useClass: OverpassServicioMapas },
-    { provide: BAJA_PRECIO_NOTIFIER, useClass: PrismaBajaPrecioNotifier },
   ],
 })
 export class PublicacionesModule {}

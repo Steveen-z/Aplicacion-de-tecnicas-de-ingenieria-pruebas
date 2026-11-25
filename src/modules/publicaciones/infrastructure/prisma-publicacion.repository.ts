@@ -15,8 +15,10 @@ import {
   Publicacion,
 } from '../domain/publicacion';
 import {
+  AvisoCambioPrecio,
   Paginacion,
   PublicacionRepository,
+  ResultadoCambioPrecio,
   ResultadoListado,
 } from '../domain/publicacion.repository';
 import {
@@ -143,27 +145,60 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
   async registrarCambioPrecio(
     idPublicacion: number,
     nuevoPrecio: number,
-  ): Promise<{ precioAnterior: number; huboCambio: boolean }> {
+    aviso: AvisoCambioPrecio,
+  ): Promise<ResultadoCambioPrecio> {
     return this.prisma.$transaction(async (tx) => {
       // FOR UPDATE: dos cambios simultáneos se serializan y el historial no se corrompe.
-      const filas = await tx.$queryRaw<{ precio: Prisma.Decimal }[]>`
-        SELECT precio FROM publicaciones WHERE id_publicacion = ${big(idPublicacion)} FOR UPDATE`;
+      const filas = await tx.$queryRaw<{ precio: Prisma.Decimal; estado: string; titulo: string }[]>`
+        SELECT precio, estado, titulo FROM publicaciones
+        WHERE id_publicacion = ${big(idPublicacion)} FOR UPDATE`;
       if (filas.length === 0) throw new NotFoundError('La publicación no existe');
 
       const precioAnterior = dec(filas[0].precio);
       // Se compara en centavos para evitar errores de coma flotante.
       if (Math.round(precioAnterior * 100) === Math.round(nuevoPrecio * 100)) {
-        return { precioAnterior, huboCambio: false };
+        return { precioAnterior, huboCambio: false, avisosCreados: 0 };
       }
 
       await tx.publicacion.update({
         where: { id: big(idPublicacion) },
         data: { precio: nuevoPrecio, fechaActualizacion: new Date() },
       });
-      await tx.historialPrecio.create({
+      const historial = await tx.historialPrecio.create({
         data: { idPublicacion: big(idPublicacion), precioAnterior, precioNuevo: nuevoPrecio },
+        select: { id: true },
       });
-      return { precioAnterior, huboCambio: true };
+
+      const texto = aviso.decidir({
+        titulo: filas[0].titulo,
+        estado: filas[0].estado as EstadoPublicacion,
+        precioAnterior,
+      });
+      if (!texto) return { precioAnterior, huboCambio: true, avisosCreados: 0 };
+
+      // Interesados: clientes con la publicación en favoritos y cuenta activa, sin el vendedor.
+      const favoritos = await tx.favorito.findMany({
+        where: {
+          idPublicacion: big(idPublicacion),
+          cliente: { usuario: { estadoCuenta: 'ACTIVA', id: { not: big(aviso.excluirIdUsuario) } } },
+        },
+        select: { cliente: { select: { idUsuario: true } } },
+      });
+      const destinatarios = [...new Set(favoritos.map((f) => f.cliente.idUsuario))];
+      if (destinatarios.length === 0) return { precioAnterior, huboCambio: true, avisosCreados: 0 };
+
+      const { count } = await tx.notificacion.createMany({
+        data: destinatarios.map((idUsuario) => ({
+          idUsuario,
+          idPublicacion: big(idPublicacion),
+          idHistorial: historial.id,
+          titulo: texto.titulo,
+          mensaje: texto.mensaje,
+          tipo: 'BAJA_PRECIO',
+        })),
+        skipDuplicates: true, // UNIQUE (id_usuario, id_historial)
+      });
+      return { precioAnterior, huboCambio: true, avisosCreados: count };
     });
   }
 

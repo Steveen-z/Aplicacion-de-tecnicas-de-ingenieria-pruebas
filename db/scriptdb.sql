@@ -3,7 +3,7 @@
 -- Motor: PostgreSQL 16 (+ PostGIS desde la migracion 002)
 --
 -- ARCHIVO GENERADO: no editar a mano. Es la concatenacion de
--- db/migraciones/*.sql (1 migraciones). Para cambiar el esquema, crea una
+-- db/migraciones/*.sql (2 migraciones). Para cambiar el esquema, crea una
 -- migracion nueva y ejecuta: npm run db:generar-script
 --
 -- Uso en una base NUEVA (vacia):
@@ -297,3 +297,39 @@ COMMIT;
 --    anterior y el nuevo en historial_precios dentro de una transaccion.
 -- 6. Al aprobar una solicitud de cambio de rol, el backend debe crear el
 --    perfil en vendedores y actualizar usuarios.rol a 'VENDEDOR'.
+
+-- >>>>>>>>>>>>>>>>>>>> 007_baja_precio_atomica.sql
+
+-- ============================================================
+-- Migracion 007 - Avisos de baja de precio atomicos y sin duplicados
+-- Cada notificacion BAJA_PRECIO queda ligada al cambio de precio que la
+-- origino; UNIQUE (id_usuario, id_historial) impide avisar dos veces.
+-- ============================================================
+
+BEGIN;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM schema_migraciones WHERE version = '007') THEN
+    RAISE EXCEPTION 'La migracion 007 (baja_precio_atomica) ya esta aplicada';
+  END IF;
+END $$;
+
+ALTER TABLE notificaciones
+    ADD COLUMN id_historial BIGINT
+        REFERENCES historial_precios(id_historial) ON DELETE SET NULL;
+
+ALTER TABLE notificaciones
+    ADD CONSTRAINT uq_notificaciones_usuario_historial UNIQUE (id_usuario, id_historial);
+
+-- Solo para filas nuevas: las notificaciones anteriores no tienen vinculo fiable.
+ALTER TABLE notificaciones
+    ADD CONSTRAINT ck_baja_precio_historial
+        CHECK (tipo <> 'BAJA_PRECIO' OR id_historial IS NOT NULL) NOT VALID;
+
+-- Destinatarios de un aviso: favoritos de una publicacion.
+CREATE INDEX idx_favoritos_publicacion ON favoritos(id_publicacion);
+
+INSERT INTO schema_migraciones (version, nombre) VALUES ('007', 'baja_precio_atomica');
+
+COMMIT;

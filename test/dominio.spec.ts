@@ -26,6 +26,7 @@ import {
 import { evaluarRequisitosVendedor } from '../src/modules/cambio-rol/domain/solicitud-cambio-rol';
 import { detectarExtension } from '../src/modules/archivos/domain/tipo-archivo';
 import { esRutaArchivoValida } from '../src/shared/domain/file-storage.port';
+import { decidirAvisoBajaPrecio } from '../src/modules/publicaciones/domain/baja-precio';
 
 const ok = (nombre: string, fn: () => void) => it(nombre, fn);
 const lanza = (fn: () => unknown) => assert.throws(fn, BusinessRuleError);
@@ -171,4 +172,13 @@ ok('rutas de archivo: solo UUID.ext dentro de carpetas permitidas (anti path-tra
   assert.equal(esRutaArchivoValida(`documentos/../../etc/passwd`), false);
   assert.equal(esRutaArchivoValida(`documentos/${uuid}.exe`), false);
   assert.equal(esRutaArchivoValida(`/etc/passwd`), false);
+});
+
+// ---- Baja de precio (P11)
+ok('aviso de baja de precio: solo baja real en publicación ACTIVA', () => {
+  const base = { titulo: 'Casa', precioAnterior: 1000 };
+  assert.ok(decidirAvisoBajaPrecio({ ...base, estado: 'ACTIVA', precioNuevo: 999.99 }));
+  assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'ACTIVA', precioNuevo: 1000 }), null);
+  assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'ACTIVA', precioNuevo: 1200 }), null);
+  assert.equal(decidirAvisoBajaPrecio({ ...base, estado: 'PAUSADA', precioNuevo: 500 }), null);
 });

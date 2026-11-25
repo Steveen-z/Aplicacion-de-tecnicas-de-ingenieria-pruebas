@@ -75,3 +75,19 @@ export class LoginDto {
   @MaxLength(72)
   password!: string;
 }
+
+/** Al menos un campo. El correo, el rol y el estado no se aceptan (400 por campo no permitido). */
+export class ActualizarPerfilDto {
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(150)
+  nombreCompleto?: string;
+
+  /** Enviar null o "" para borrarlo (no permitido para vendedores). */
+  @IsOptional()
+  @Transform(recortar)
+  @IsString()
+  @MaxLength(25)
+  telefono?: string | null;
+}

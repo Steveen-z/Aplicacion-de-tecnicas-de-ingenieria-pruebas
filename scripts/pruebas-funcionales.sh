@@ -204,6 +204,22 @@ req PATCH "/admin/documentos/$DOC/revision" "$TOK_ADM" '{"estado":"APROBADO"}'; 
 req GET /vendedores/me/documentos "$TOK_VEN"
 check F22 "Documento enviado ($S1), aprobado ($S2) -> VERIFICADO" '[ "$S1" = 201 ] && [ "$S2" = 200 ] && echo "$BODY" | grep -q VERIFICADO'
 
+echo "== Fase 2: perfil propio y baja de precio atómica =="
+req PATCH /auth/me "$TOK_CLI" '{"nombreCompleto":"Comprador Editado","telefono":"7555-6666"}'
+check F23 "PATCH /auth/me cambia nombre y teléfono -> 200" '[ "$STATUS" = 200 ] && [ "$(j .nombreCompleto)" = "Comprador Editado" ] && [ "$(j .telefono)" = 75556666 ]'
+req PATCH /auth/me "$TOK_CLI" '{"rol":"ADMIN"}'; A="$STATUS"
+req PATCH /auth/me "$TOK_CLI" '{"telefono":"123"}'; B="$STATUS"
+req PATCH /auth/me "" '{"nombreCompleto":"Nadie"}'; C="$STATUS"
+check F24 "Perfil: campo rol ($A) / teléfono inválido ($B) / sin sesión ($C) -> 400/422/401" '[ "$A" = 400 ] && [ "$B" = 422 ] && [ "$C" = 401 ]'
+
+req POST "/favoritos/$PUB5/alternar" "$TOK_CLI"
+req PATCH "/publicaciones/$PUB5/precio" "$TOK_VEN2" '{"precio":17000}'; A="$STATUS"; NA="$(j .clientesNotificados)"
+req PATCH "/publicaciones/$PUB5/precio" "$TOK_VEN2" '{"precio":16000}'; B="$STATUS"; NB="$(j .clientesNotificados)"
+req GET /notificaciones "$TOK_CLI"
+N_AVISOS="$(echo "$BODY" | jq "[.. | objects | select(.tipo? == \"BAJA_PRECIO\" and .idPublicacion? == $PUB5)] | length")"
+check F48 "Dos bajas seguidas ($A/$B, avisos $NA+$NB) -> una notificación por baja, sin duplicados ($N_AVISOS)" \
+  '[ "$A" = 200 ] && [ "$B" = 200 ] && [ "$NA" = 1 ] && [ "$NB" = 1 ] && [ "$N_AVISOS" = 2 ]'
+
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"
 [ "$FAIL" = 0 ]
