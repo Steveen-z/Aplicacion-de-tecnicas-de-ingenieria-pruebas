@@ -1,7 +1,8 @@
-// Esquema Prisma equivalente a db/scriptdb.sql (PostgreSQL).
+// Esquema Prisma equivalente a db/migraciones/*.sql (PostgreSQL); al cambiar una
+// migracion, actualiza tambien este archivo.
 // Los CHECK de la base de datos no se pueden expresar en Prisma, por eso los
 // "enums" se mantienen como String y se validan en la capa de dominio/DTOs.
-// NO ejecutar `prisma migrate` sobre este esquema: la base se crea con scriptdb.sql.
+// NO ejecutar `prisma migrate` sobre este esquema: la base se gestiona con npm run db:migrar.
 // Solo se necesita `prisma generate` (se ejecuta solo con npm install).
 
 generator client {
@@ -182,6 +183,7 @@ model Favorito {
   publicacion Publicacion @relation(fields: [idPublicacion], references: [id], onDelete: Cascade)
 
   @@unique([idCliente, idPublicacion])
+  @@index([idPublicacion], map: "idx_favoritos_publicacion")
   @@map("favoritos")
 }
 
@@ -192,7 +194,8 @@ model HistorialPrecio {
   precioNuevo    Decimal  @map("precio_nuevo") @db.Decimal(12, 2)
   fechaCambio    DateTime @default(now()) @map("fecha_cambio") @db.Timestamptz(6)
 
-  publicacion Publicacion @relation(fields: [idPublicacion], references: [id], onDelete: Cascade)
+  publicacion    Publicacion    @relation(fields: [idPublicacion], references: [id], onDelete: Cascade)
+  notificaciones Notificacion[]
 
   @@map("historial_precios")
 }
@@ -207,10 +210,13 @@ model Notificacion {
   fechaCreacion DateTime  @default(now()) @map("fecha_creacion") @db.Timestamptz(6)
   leida         Boolean   @default(false)
   fechaLectura  DateTime? @map("fecha_lectura") @db.Timestamptz(6)
+  idHistorial   BigInt?   @map("id_historial")
 
-  usuario     Usuario      @relation(fields: [idUsuario], references: [id], onDelete: Cascade)
-  publicacion Publicacion? @relation(fields: [idPublicacion], references: [id], onDelete: SetNull)
+  usuario     Usuario          @relation(fields: [idUsuario], references: [id], onDelete: Cascade)
+  publicacion Publicacion?     @relation(fields: [idPublicacion], references: [id], onDelete: SetNull)
+  historial   HistorialPrecio? @relation(fields: [idHistorial], references: [id], onDelete: SetNull)
 
+  @@unique([idUsuario, idHistorial])
   @@map("notificaciones")
 }
 

@@ -1,5 +1,7 @@
 import { Usuario, UsuarioConCredenciales } from './usuario';
 
+import { DatosPerfilAGuardar } from './perfil';
+
 export const USUARIO_REPOSITORY = Symbol('USUARIO_REPOSITORY');
 
 export interface NuevoUsuario {
@@ -23,4 +25,6 @@ export interface UsuarioRepository {
   crearVendedor(datos: NuevoUsuario & DatosVendedor): Promise<Usuario>;
   buscarConCredencialesPorCorreo(correo: string): Promise<UsuarioConCredenciales | null>;
   buscarPorId(idUsuario: number): Promise<Usuario | null>;
+  /** Actualiza nombre/teléfono del propio usuario y devuelve el perfil actualizado. */
+  actualizarPerfil(idUsuario: number, datos: DatosPerfilAGuardar): Promise<Usuario>;
 }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConflictError } from '../../../shared/domain/errors';
 import { PrismaService } from '../../../shared/infrastructure/prisma/prisma.service';
 import { big, esViolacionUnica } from '../../../shared/infrastructure/prisma/prisma-helpers';
+import { DatosPerfilAGuardar } from '../domain/perfil';
 import { Usuario, UsuarioConCredenciales } from '../domain/usuario';
 import { DatosVendedor, NuevoUsuario, UsuarioRepository } from '../domain/usuario.repository';
 import { aUsuario, aUsuarioConCredenciales, usuarioInclude } from './usuario.mapper';
@@ -59,6 +60,15 @@ export class PrismaUsuarioRepository implements UsuarioRepository {
       include: usuarioInclude,
     });
     return row ? aUsuario(row) : null;
+  }
+
+  async actualizarPerfil(idUsuario: number, datos: DatosPerfilAGuardar): Promise<Usuario> {
+    const row = await this.prisma.usuario.update({
+      where: { id: big(idUsuario) },
+      data: { ...datos, fechaActualizacion: new Date() },
+      include: usuarioInclude,
+    });
+    return aUsuario(row);
   }
 
   /** Cubre la carrera entre el "existe" y el "crea": la restricción UNIQUE manda. */

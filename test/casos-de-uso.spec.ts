@@ -22,13 +22,14 @@ import { PasswordHasher, TokenService } from '../src/modules/auth/domain/ports';
 import { SesionRepository } from '../src/modules/auth/domain/sesion.repository';
 import { NuevoUsuario, UsuarioRepository } from '../src/modules/auth/domain/usuario.repository';
 import { UsuarioConCredenciales } from '../src/modules/auth/domain/usuario';
+import { DatosPerfilAGuardar } from '../src/modules/auth/domain/perfil';
+import { ActualizarPerfilUseCase } from '../src/modules/auth/application/use-cases/actualizar-perfil.use-case';
 import { SolicitarCambioRolUseCase } from '../src/modules/cambio-rol/application/solicitar-cambio-rol.use-case';
 import { CambioRolRepository } from '../src/modules/cambio-rol/domain/cambio-rol.repository';
 import { DatosVendedorSolicitados, PerfilParaCambioRol } from '../src/modules/cambio-rol/domain/solicitud-cambio-rol';
 import { ActualizarPrecioUseCase } from '../src/modules/publicaciones/application/actualizar-precio.use-case';
-import { BajaPrecio, BajaPrecioNotifier } from '../src/modules/publicaciones/domain/baja-precio-notifier.port';
 import { EstadoPublicacion, Publicacion } from '../src/modules/publicaciones/domain/publicacion';
-import { PublicacionRepository } from '../src/modules/publicaciones/domain/publicacion.repository';
+import { AvisoCambioPrecio, PublicacionRepository } from '../src/modules/publicaciones/domain/publicacion.repository';
 import { CrearComparacionUseCase } from '../src/modules/comparaciones/application/comparaciones.use-cases';
 import { ComparacionRepository } from '../src/modules/comparaciones/domain/comparacion.repository';
 import { TerrenoComparable } from '../src/modules/comparaciones/domain/comparacion';
@@ -117,6 +118,12 @@ class UsuariosEnMemoria implements UsuarioRepository {
   async buscarPorId(id: number) {
     return this.filas.find((u) => u.idUsuario === id) ?? null;
   }
+  async actualizarPerfil(id: number, datos: DatosPerfilAGuardar) {
+    const fila = this.filas.find((u) => u.idUsuario === id)!;
+    Object.assign(fila, datos);
+    const { passwordHash: _p, ...publico } = fila;
+    return publico;
+  }
 }
 
 function montarAuth() {
@@ -130,6 +137,7 @@ function montarAuth() {
     sesiones,
     registrar: new RegistrarClienteUseCase(usuarios, hasher, emitir),
     login: new IniciarSesionUseCase(usuarios, hasher, emitir),
+    perfil: new ActualizarPerfilUseCase(usuarios),
   };
 }
 
@@ -203,6 +211,51 @@ describe('Auth - IniciarSesionUseCase', () => {
     usuarios.filas[0].estadoCuenta = 'BLOQUEADA';
     await rechaza(login.execute({ correo: 'ana@correo.sv', password: 'Clave12345' }), ForbiddenError);
     assert.equal(sesiones.creadas.length, 1); // solo la del registro
+  });
+});
+
+// ============================================================ Perfil propio
+
+describe('Perfil - ActualizarPerfilUseCase', () => {
+  const sesion = (idUsuario: number, rol: AuthUser['rol'] = 'CLIENTE'): AuthUser => ({
+    idUsuario, idSesion: 1, nombreCompleto: '', correo: '', rol, idCliente: idUsuario, idVendedor: null,
+  });
+
+  it('cambia nombre y teléfono normalizado; el teléfono nuevo queda sin verificar', async () => {
+    const { registrar, perfil, usuarios } = montarAuth();
+    await registrar.execute({ nombreCompleto: 'Ana', correo: 'a@b.sv', password: 'Clave12345', telefono: '7000-1234' });
+    usuarios.filas[0].telefonoVerificado = true;
+    const r = await perfil.execute({ user: sesion(1), nombreCompleto: '  Ana María ', telefono: '7111 2222' });
+    assert.equal(r.nombreCompleto, 'Ana María');
+    assert.equal(r.telefono, '71112222');
+    assert.equal(r.telefonoVerificado, false);
+  });
+
+  it('teléfono inválido, nombre corto o sin cambios -> 422', async () => {
+    const { registrar, perfil } = montarAuth();
+    await registrar.execute({ nombreCompleto: 'Ana', correo: 'a@b.sv', password: 'Clave12345' });
+    await rechaza(perfil.execute({ user: sesion(1), telefono: '123' }), BusinessRuleError);
+    await rechaza(perfil.execute({ user: sesion(1), nombreCompleto: 'A' }), BusinessRuleError);
+    await rechaza(perfil.execute({ user: sesion(1) }), BusinessRuleError);
+  });
+
+  it('un vendedor no puede borrar su teléfono; un cliente sí', async () => {
+    const { registrar, perfil, usuarios } = montarAuth();
+    await registrar.execute({ nombreCompleto: 'Ana', correo: 'a@b.sv', password: 'Clave12345', telefono: '70001234' });
+    usuarios.filas[0].rol = 'VENDEDOR';
+    await rechaza(perfil.execute({ user: sesion(1, 'VENDEDOR'), telefono: null }), BusinessRuleError);
+    usuarios.filas[0].rol = 'CLIENTE';
+    const r = await perfil.execute({ user: sesion(1), telefono: '' });
+    assert.equal(r.telefono, null);
+  });
+
+  it('solo modifica la fila del usuario de la sesión', async () => {
+    const { registrar, perfil, usuarios } = montarAuth();
+    await registrar.execute({ nombreCompleto: 'Ana', correo: 'a@b.sv', password: 'Clave12345' });
+    await registrar.execute({ nombreCompleto: 'Beto', correo: 'b@b.sv', password: 'Clave12345' });
+    await perfil.execute({ user: sesion(2), nombreCompleto: 'Beto Cambiado' });
+    assert.equal(usuarios.filas[0].nombreCompleto, 'Ana');
+    assert.equal(usuarios.filas[1].nombreCompleto, 'Beto Cambiado');
   });
 });
 
@@ -329,88 +382,83 @@ function publicacion(estado: EstadoPublicacion, precio = 25000): Publicacion {
   };
 }
 
-/** Solo implementa lo que usa ActualizarPrecioUseCase. */
-function repoPrecio(pub: Publicacion) {
+/**
+ * Solo implementa lo que usa ActualizarPrecioUseCase. Simula la transacción del repositorio:
+ * aplica precio + historial + avisos juntos, o nada si `falla` está activo.
+ */
+function repoPrecio(pub: Publicacion, interesados: number[] = [5, 6, 100]) {
   const historial: { anterior: number; nuevo: number }[] = [];
+  const avisos: { idUsuario: number; titulo: string; mensaje: string }[] = [];
+  const estado = { falla: false };
   const repo = {
     async buscarPorId(id: number) {
       return id === pub.idPublicacion ? pub : null;
     },
-    async registrarCambioPrecio(_id: number, nuevo: number) {
+    async registrarCambioPrecio(_id: number, nuevo: number, aviso: AvisoCambioPrecio) {
       const anterior = pub.precio;
-      if (anterior === nuevo) return { precioAnterior: anterior, huboCambio: false };
-      historial.push({ anterior, nuevo });
+      if (anterior === nuevo) return { precioAnterior: anterior, huboCambio: false, avisosCreados: 0 };
+      const texto = aviso.decidir({ titulo: pub.titulo, estado: pub.estado, precioAnterior: anterior });
+      const destinatarios = texto ? interesados.filter((u) => u !== aviso.excluirIdUsuario) : [];
+      if (estado.falla) throw new Error('fallo al insertar notificaciones'); // la transacción se revierte entera
       pub.precio = nuevo;
-      return { precioAnterior: anterior, huboCambio: true };
+      historial.push({ anterior, nuevo });
+      for (const idUsuario of destinatarios) avisos.push({ idUsuario, ...texto! });
+      return { precioAnterior: anterior, huboCambio: true, avisosCreados: destinatarios.length };
     },
   } as unknown as PublicacionRepository;
-  return { repo, historial };
-}
-
-class NotifierFalso implements BajaPrecioNotifier {
-  avisos: BajaPrecio[] = [];
-  falla = false;
-  async notificar(baja: BajaPrecio) {
-    if (this.falla) throw new Error('BD caída');
-    this.avisos.push(baja);
-    return 2;
-  }
+  return { repo, historial, avisos, estado };
 }
 
 describe('P11 - ActualizarPrecioUseCase', () => {
-  it('baja de precio: registra historial y notifica a interesados excluyendo al vendedor', async () => {
-    const { repo, historial } = repoPrecio(publicacion('ACTIVA'));
-    const notifier = new NotifierFalso();
-    const r = await new ActualizarPrecioUseCase(repo, notifier).execute({
-      user: vendedorUser(1),
-      idPublicacion: 7,
-      nuevoPrecio: 22000,
-    });
+  it('baja de precio: registra historial y avisa a los interesados excluyendo al vendedor', async () => {
+    const { repo, historial, avisos } = repoPrecio(publicacion('ACTIVA'));
+    const r = await new ActualizarPrecioUseCase(repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 22000 });
     assert.deepEqual(r, { idPublicacion: 7, precioAnterior: 25000, precioNuevo: 22000, bajoElPrecio: true, clientesNotificados: 2 });
     assert.deepEqual(historial, [{ anterior: 25000, nuevo: 22000 }]);
-    assert.equal(notifier.avisos[0].excluirIdUsuario, 100);
+    assert.deepEqual(avisos.map((a) => a.idUsuario), [5, 6]); // 100 es el vendedor
+    assert.match(avisos[0].mensaje, /\$25,000\.00 a \$22,000\.00/);
   });
 
-  it('subida de precio o publicación pausada: registra historial pero no notifica', async () => {
-    const notifier = new NotifierFalso();
+  it('subida de precio o publicación pausada: registra historial pero no avisa', async () => {
     const sube = repoPrecio(publicacion('ACTIVA'));
-    await new ActualizarPrecioUseCase(sube.repo, notifier).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 30000 });
+    await new ActualizarPrecioUseCase(sube.repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 30000 });
     const pausada = repoPrecio(publicacion('PAUSADA'));
-    const r = await new ActualizarPrecioUseCase(pausada.repo, notifier).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 1000 });
+    const r = await new ActualizarPrecioUseCase(pausada.repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 1000 });
     assert.equal(sube.historial.length, 1);
     assert.equal(pausada.historial.length, 1);
     assert.equal(r.clientesNotificados, 0);
-    assert.equal(notifier.avisos.length, 0);
+    assert.equal(sube.avisos.length + pausada.avisos.length, 0);
   });
 
   it('precio igual -> 422; publicación vendida -> 422; publicación ajena -> 403', async () => {
     const igual = repoPrecio(publicacion('ACTIVA'));
     await rechaza(
-      new ActualizarPrecioUseCase(igual.repo, new NotifierFalso()).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 25000 }),
+      new ActualizarPrecioUseCase(igual.repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 25000 }),
       BusinessRuleError,
     );
     const vendida = repoPrecio(publicacion('VENDIDA'));
     await rechaza(
-      new ActualizarPrecioUseCase(vendida.repo, new NotifierFalso()).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 1 }),
+      new ActualizarPrecioUseCase(vendida.repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 1 }),
       BusinessRuleError,
     );
     const ajena = repoPrecio(publicacion('ACTIVA'));
     await rechaza(
-      new ActualizarPrecioUseCase(ajena.repo, new NotifierFalso()).execute({ user: vendedorUser(2, 200), idPublicacion: 7, nuevoPrecio: 1 }),
+      new ActualizarPrecioUseCase(ajena.repo).execute({ user: vendedorUser(2, 200), idPublicacion: 7, nuevoPrecio: 1 }),
       ForbiddenError,
     );
     assert.equal(vendida.historial.length + ajena.historial.length, 0);
   });
 
-  it('si fallan las notificaciones el cambio de precio se mantiene', async () => {
-    const { repo, historial } = repoPrecio(publicacion('ACTIVA'));
-    const notifier = new NotifierFalso();
-    notifier.falla = true;
-    const uc = new ActualizarPrecioUseCase(repo, notifier);
-    (uc as unknown as { logger: { error: () => void } }).logger = { error: () => {} }; // silencia el log esperado
-    const r = await uc.execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 20000 });
-    assert.equal(r.clientesNotificados, 0);
-    assert.equal(historial.length, 1);
+  it('si falla la creación de avisos el error se propaga y no queda nada a medias', async () => {
+    const pub = publicacion('ACTIVA');
+    const { repo, historial, avisos, estado } = repoPrecio(pub);
+    estado.falla = true;
+    await assert.rejects(
+      new ActualizarPrecioUseCase(repo).execute({ user: vendedorUser(1), idPublicacion: 7, nuevoPrecio: 20000 }),
+      /fallo al insertar notificaciones/,
+    );
+    assert.equal(pub.precio, 25000);
+    assert.equal(historial.length + avisos.length, 0);
   });
 });
 

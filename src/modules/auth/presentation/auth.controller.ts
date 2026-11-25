@@ -1,16 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthUser } from '../../../shared/domain/auth-user';
 import { CurrentUser } from '../../../shared/infrastructure/security/decorators';
 import { JwtAuthGuard } from '../../../shared/infrastructure/security/jwt-auth.guard';
+import { ActualizarPerfilUseCase } from '../application/use-cases/actualizar-perfil.use-case';
 import { CerrarSesionUseCase } from '../application/use-cases/cerrar-sesion.use-case';
 import { IniciarSesionUseCase } from '../application/use-cases/iniciar-sesion.use-case';
 import { ObtenerPerfilUseCase } from '../application/use-cases/obtener-perfil.use-case';
 import { RegistrarClienteUseCase, RegistroResultado } from '../application/use-cases/registrar-cliente.use-case';
 import { RegistrarVendedorUseCase } from '../application/use-cases/registrar-vendedor.use-case';
 import { RenovarSesionUseCase } from '../application/use-cases/renovar-sesion.use-case';
-import { LoginDto, RegistroClienteDto, RegistroVendedorDto } from './auth.dto';
+import { ActualizarPerfilDto, LoginDto, RegistroClienteDto, RegistroVendedorDto } from './auth.dto';
 
 const LIMITE_ESTRICTO = { default: { limit: 10, ttl: 60_000 } };
 
@@ -28,6 +29,7 @@ export class AuthController {
     private readonly cerrarSesion: CerrarSesionUseCase,
     private readonly renovarSesion: RenovarSesionUseCase,
     private readonly obtenerPerfil: ObtenerPerfilUseCase,
+    private readonly actualizarPerfil: ActualizarPerfilUseCase,
   ) {}
 
   /** P02 - Registrar cuenta de cliente (devuelve la sesión ya iniciada). */
@@ -74,5 +76,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async me(@CurrentUser() user: AuthUser) {
     return this.obtenerPerfil.execute(user.idUsuario);
+  }
+
+  /** Editar el perfil propio: nombre y teléfono (el teléfono vuelve a quedar sin verificar si cambia). */
+  @Patch('me')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async editarPerfil(@CurrentUser() user: AuthUser, @Body() dto: ActualizarPerfilDto) {
+    return this.actualizarPerfil.execute({ user, ...dto });
   }
 }
