@@ -77,6 +77,74 @@ Primera ejecución sobre `main` (v1.0.0 sin correcciones), 2026-11-25: 20 OK / 5
 | Cabeceras helmet | `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff` presentes |
 | 20 peticiones seguidas a `GET /publicaciones?limit=20` (BD con 16 publicaciones, 13 activas) | 0,18 s en total (~9 ms por petición); no es una prueba de carga |
 
+## 1.4 Pruebas unitarias tras la fase 2 (2026-11-25)
+`npm test` ejecuta todos los `test/*.spec.ts` (node:test + tsx, sin base de datos ni red). Última ejecución, sobre una instalación limpia (`npm ci`): **82 pruebas, 82 aprobadas, 0 fallidas**.
+
+| Archivo | Pruebas | Qué cubre |
+|---|---|---|
+| `test/dominio.spec.ts` | 22 | Validadores, estados P09, coordenadas, comparación, requisitos P03, archivos por firma, aviso de baja de precio, tipos de inmueble |
+| `test/casos-de-uso.spec.ts` | 24 | Registro, login, perfil propio, P03, P11 (atomicidad simulada), P12 (incluye tipos de inmueble) |
+| `test/admin.spec.ts` | 14 | Reglas de bloqueo y moderación; casos de uso de usuarios, moderación, auditoría, revisión de documentos y cambio de estado concurrente |
+| `test/archivos.spec.ts` | 11 | Propiedad de imágenes y documentos, subida con compensación, limpieza de huérfanos, `LocalFileStorage` (incluye path traversal) |
+| `test/seguridad.spec.ts` | 6 | Cookie de sesión, token CSRF, decisión del guard CSRF, validación de entorno |
+| `test/esquema.spec.ts` | 3 | `db/scriptdb.sql` generado desde las migraciones; formato de migraciones; migraciones requeridas por el healthcheck |
+| `test/dto.spec.ts` | 2 | Validación de los parámetros de búsqueda por cercanía |
+
+## 2.1 Pruebas funcionales de la fase 2 (F23–F56)
+Mismo script (`scripts/pruebas-funcionales.sh`), API real con PostgreSQL 16 + PostGIS 3.4.2. **Ejecución final, 2026-11-25 14:25 UTC, sobre una base nueva** (base vacía → `npm run db:migrar` → `npm run db:seed` → `npm run start:dev` → `PRUEBA_LIMPIEZA=1 bash scripts/pruebas-funcionales.sh`): **61 comprobaciones, 61 aprobadas, 0 fallidas** (F01–F22 y F23–F56). El caso F56 solo se ejecuta con `PRUEBA_LIMPIEZA=1` porque borra archivos sin uso de la base local.
+
+| ID | Área | Caso | Esperado | Resultado real (2026-11-25, script) |
+|---|---|---|---|---|
+| F23 | Perfil | `PATCH /auth/me` cambia nombre y teléfono | 200 con los datos nuevos | OK: 200, teléfono normalizado |
+| F24 | Perfil | Campo `rol` / teléfono inválido / sin sesión | 400 / 422 / 401 | OK: 400 / 422 / 401 |
+| F25 | Admin | Cliente y vendedor en `/admin/usuarios`, `/admin/auditoria` y moderación | 403 | OK: 403 / 403 / 403 |
+| F26 | Admin | Listar usuarios con `rol=VENDEDOR`, paginado | Todos VENDEDOR, sin `passwordHash` | OK |
+| F27 | Admin | Bloquear al vendedor 2 con motivo; su token; su login | 200 / 401 / 403 | OK: 200 (1 sesión cerrada) / 401 / 403 |
+| F28 | Admin | Bloquear otra vez | 200 `huboCambio=false`, auditoría +1 solo la primera vez | OK: auditoría 0 → 1 |
+| F29 | Admin | Autobloqueo / bloqueo sin motivo | 403 / 422 | OK |
+| F30 | Admin | Publicaciones del bloqueado en listado, radio y detalle | No aparecen; detalle anónimo 404, admin 200 | OK |
+| F31 | Admin | Reactivar al vendedor 2 | Sus publicaciones reaparecen | OK |
+| F32 | Moderación | Rechazar sin motivo / con motivo | 422 / 200 RECHAZADA | OK |
+| F33 | Moderación | Publicación rechazada | Fuera del listado, detalle anónimo 404, el vendedor ve el motivo y no puede reactivarla (422) | OK |
+| F34 | Moderación | Cliente y vendedor intentan moderar | 403 | OK |
+| F35 | Moderación | Restaurar rechazada / restaurar no rechazada / rechazar vendida | 200 PAUSADA / 422 / 422 | OK |
+| F36 | Moderación | Notificación al vendedor | Contiene el motivo | OK |
+| F37 | Auditoría | Consulta y filtros | Bloqueo, activación, rechazo, restauración y aprobación con el admin como actor; filtro por entidad; fechas invertidas 422, fecha inválida 400 | OK |
+| F38 | Archivos | Imagen externa o URL inventada del propio servidor | 422 | OK: 422 / 422 |
+| F39 | Archivos | Imagen subida por otro vendedor al crear y al agregar fotos | 403 | OK: 403 / 403 |
+| F40 | Archivos | Documento como foto / documento ajeno / propio | 422 / 403 / 201 | OK |
+| F41 | PostGIS | Radio 5 km desde San Miguel y desde San Salvador | Incluye las cercanas y excluye la lejana (~112 km); `distanciaKm ≤ 5`; sin coordenadas exactas; 2 decimales | OK (F41 y F41b) |
+| F42 | PostGIS | Radio + `precioMax` + `tipoOperacion` | Todas cumplen todo | OK |
+| F43 | PostGIS | `orden=DISTANCIA` | Ascendente; la de Usulután (~30 km) al final | OK |
+| F44 | PostGIS | `radioKm=100`, solo `lat`, DISTANCIA sin centro | 400 | OK: 400 / 400 / 400 |
+| F45 | Inmuebles | CASA completa / CASA sin habitaciones / TERRENO con casa / LOTE | 201 / 422 / 422 / 201 | OK |
+| F46 | Inmuebles | Casas con ≥ 4 habitaciones; `habitacionesMin` con TERRENO; filtro LOTE | Filtrado / 422 / solo el lote | OK |
+| F47 | Inmuebles | CASA con TERRENO / dos casas / casa en un terreno / cambiar tipo | 422 / 201 con resumen ampliado / 422 / 400 | OK |
+| F48 | P11 | Dos bajas seguidas con un favorito | Una notificación por baja, sin duplicados | OK: 1 + 1 |
+| F49 | Sesión | Login del navegador | `Set-Cookie` HttpOnly, `Path=/api`; `/auth/me` con cookie 200 | OK |
+| F50 | Sesión | Cookie sin token / token falso / token de `/auth/csrf` | 403 / 403 / 200 | OK |
+| F51 | Sesión | Bearer sin cabecera CSRF | 200 | OK |
+| F52 | Sesión | Cookie + token válido + `Origin` ajeno | 403 | OK |
+| F53 | Sesión | Preflight CORS | Origen ajeno sin `Access-Control-Allow-Origin`; permitido con credentials | OK |
+| F54 | Sesión | Logout por cookie | 204, cookie borrada, la vieja da 401 | OK |
+| F55 | Salud | `GET /health` | Versión de PostGIS y esquema | OK: PostGIS 3.4.2, migraciones 001–007 |
+| F56 | Archivos | Limpieza de una imagen huérfana envejecida | La simulación no borra; la limpieza sí (404); la foto en uso sigue (200); repetir borra 0 | OK |
+
+### Comprobaciones adicionales de la fase 2 (2026-11-25)
+| Comprobación | Resultado |
+|---|---|
+| Migraciones en una base nueva con `db:migrar`, con `scriptdb.sql` y en la base existente (`--baseline 001`) | `pg_dump -s` idéntico en los tres casos; reejecutar una migración aborta con "ya esta aplicada" |
+| `/health` con una migración pendiente simulada / sin aplicar la 007 | 503 "Faltan migraciones de base de datos: … Ejecuta: npm run db:migrar" |
+| Columna `geography` generada (002) en base desechable | Se calcula y se actualiza al cambiar coordenadas; San Miguel–San Salvador = 112 km |
+| Auditoría (004) | CHECK acción↔entidad; UPDATE, DELETE y TRUNCATE → "La auditoria no se puede modificar ni borrar" |
+| Tipos de inmueble (003) | La base rechaza CASA incompleta, LOTE con habitaciones y publicación sin tipo |
+| Archivos (006) sobre una copia de la base de desarrollo | 12 imágenes y 13 documentos registrados, 76 fotos enlazadas, 1 externa conservada |
+| Atomicidad de P11 | Con un trigger que hace fallar el INSERT de notificaciones, el PATCH de precio da 500 y precio e historial no cambian |
+| Carrera en la revisión de documentos | 4 revisiones simultáneas → 1×200 y 3×409; una sola fila de auditoría |
+| `X-Request-Id` | Se devuelve el enviado si es válido; `<script>` se reemplaza por un UUID; aparece en el cuerpo de los errores |
+| Registro con una cookie vieja en el navegador | 201 (login y registro están exentos de CSRF) |
+| `npm audit --omit=dev` | 4 avisos de severidad alta en dependencias transitivas (p. ej. `deepmerge-ts`, `effect`); pendiente de revisar |
+
 ## 3. Errores identificados y correcciones
 | # | Hallazgo | Corrección |
 |---|---|---|
@@ -89,3 +157,12 @@ Primera ejecución sobre `main` (v1.0.0 sin correcciones), 2026-11-25: 20 OK / 5
 | 7 | F13: el plan esperaba 400 para un archivo falso; la API responde 422 (regla de negocio) | Se corrige el valor esperado en la tabla; el archivo se rechaza correctamente por firma |
 | 8 | `package-lock.json` sin versionar (instalaciones no reproducibles) | PR #1 lo añade junto al script de pruebas funcionales |
 | 9 | Errores del propio script en la primera ejecución (lectura de `latitudExacta`, tipo de documento `DUI_FRENTE`, id anidado en `documento`) | Corregidos en el script (PR #1 y este PR); no eran defectos de la API |
+| 10 | P11: el aviso de baja de precio se enviaba después de guardar el precio y su error se ignoraba (no atómico) | PR #8: precio, historial y notificaciones en una transacción; UNIQUE (usuario, historial) |
+| 11 | No existía forma de editar el perfil propio (documento de arquitectura: "Su perfil") | PR #8: `PATCH /auth/me` |
+| 12 | Pausar/reactivar/marcar del vendedor hacía un UPDATE sin condición y podía deshacer un rechazo del administrador | PR #11: UPDATE condicional y 409 |
+| 13 | Dos administradores podían revisar a la vez el mismo documento (doble revisión) | PR #11: UPDATE condicional; carrera verificada (1×200, 3×409) |
+| 14 | Al publicar se aceptaba cualquier URL como fotografía | PR #13: solo imágenes subidas por el mismo vendedor (422 / 403) |
+| 15 | En verificación se aceptaba la ruta del documento de otro usuario | PR #13: solo documentos propios (403) |
+| 16 | Prueba unitaria: la limpieza contaba dos veces un archivo cuyo borrado fallaba | PR #13: no se reprocesa una ruta en la misma ejecución |
+| 17 | `npm run archivos:limpiar` fallaba al arrancar (el CLI cargaba el controlador y sus guards) | PR #13: `ArchivosCoreModule` sin HTTP para el CLI |
+| 18 | Errores del propio script en la fase 2 (re-ejecutar dentro del límite de 1 minuto da 429; tokens cerrados por el bloqueo en F34/F40; `limit` máximo 50) | Corregidos en el script; para repetir la batería seguida hay que esperar un minuto o reiniciar la API (el contador del límite está en memoria) |
