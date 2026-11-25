@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { DomainError } from '../../domain/errors';
+import { obtenerRequestId } from './request-id.middleware';
 
 const STATUS_POR_CODIGO: Record<string, number> = {
   NOT_FOUND: HttpStatus.NOT_FOUND,
@@ -19,7 +20,7 @@ const STATUS_POR_CODIGO: Record<string, number> = {
 
 /**
  * Traduce cualquier error a una respuesta JSON uniforme:
- * { statusCode, code, message, details?, path, timestamp }
+ * { statusCode, code, message, details?, path, timestamp, requestId }
  * Los errores inesperados se registran en el log pero nunca exponen detalles al cliente.
  */
 @Catch()
@@ -35,6 +36,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let code = 'INTERNAL_ERROR';
     let message = 'Error interno del servidor';
     let details: unknown;
+    const requestId = obtenerRequestId(request);
 
     if (exception instanceof DomainError) {
       status = STATUS_POR_CODIGO[exception.code] ?? HttpStatus.BAD_REQUEST;
@@ -60,7 +62,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     } else {
       this.logger.error(
-        `${request.method} ${request.url}`,
+        `${request.method} ${request.url.split('?')[0]} requestId=${requestId ?? '-'}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -72,6 +74,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...(details !== undefined ? { details } : {}),
       path: request.url,
       timestamp: new Date().toISOString(),
+      ...(requestId ? { requestId } : {}),
     });
   }
 }
