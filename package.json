@@ -20,6 +20,7 @@
     "db:migrar": "node scripts/db-migrar.mjs",
     "db:generar-script": "node scripts/db-generar-script.mjs",
     "db:seed": "ts-node --transpile-only prisma/seed.ts",
+    "archivos:limpiar": "ts-node --transpile-only src/cli/limpiar-archivos.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

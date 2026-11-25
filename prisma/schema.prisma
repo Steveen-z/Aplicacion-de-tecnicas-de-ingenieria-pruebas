@@ -32,6 +32,7 @@ model Usuario {
   solicitudes    SolicitudCambioRol[]
   notificaciones Notificacion[]
   auditorias     Auditoria[]
+  archivos       Archivo[]
 
   @@map("usuarios")
 }
@@ -100,6 +101,9 @@ model DocumentoVerificacion {
   fechaRevision  DateTime? @map("fecha_revision") @db.Timestamptz(6)
 
   vendedor Vendedor @relation(fields: [idVendedor], references: [id], onDelete: Cascade)
+  archivo  Archivo  @relation(fields: [rutaDocumento], references: [ruta], onDelete: Restrict, map: "fk_documentos_archivo")
+
+  @@index([rutaDocumento], map: "idx_documentos_ruta")
 
   @@map("documentos_verificacion")
 }
@@ -177,8 +181,14 @@ model Fotografia {
   orden         Int      @default(1)
   esPortada     Boolean  @default(false) @map("es_portada")
   fechaSubida   DateTime @default(now()) @map("fecha_subida") @db.Timestamptz(6)
+  /// Clave del objeto (migracion 006); null solo en fotos antiguas con URL externa.
+  ruta          String?
+  externa       Boolean  @default(false)
 
   publicacion Publicacion @relation(fields: [idPublicacion], references: [id], onDelete: Cascade)
+  archivo     Archivo?    @relation(fields: [ruta], references: [ruta], onDelete: Restrict, map: "fk_fotografias_archivo")
+
+  @@index([ruta], map: "idx_fotografias_ruta")
 
   @@unique([idPublicacion, orden])
   @@map("fotografias")
@@ -271,4 +281,20 @@ model Auditoria {
   @@index([entidad, idEntidad], map: "idx_auditoria_entidad")
   @@index([idActor, fecha(sort: Desc)], map: "idx_auditoria_actor")
   @@map("auditoria")
+}
+
+/// Archivos subidos (migracion 006): dueno y categoria de cada imagen o documento.
+model Archivo {
+  id        BigInt   @id @default(autoincrement()) @map("id_archivo")
+  ruta      String   @unique
+  idUsuario BigInt   @map("id_usuario")
+  categoria String   @db.VarChar(10)
+  fecha     DateTime @default(now()) @db.Timestamptz(6)
+
+  usuario     Usuario                 @relation(fields: [idUsuario], references: [id], onDelete: Cascade)
+  fotografias Fotografia[]
+  documentos  DocumentoVerificacion[]
+
+  @@index([fecha], map: "idx_archivos_fecha")
+  @@map("archivos")
 }

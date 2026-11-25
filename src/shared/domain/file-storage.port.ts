@@ -17,4 +17,10 @@ export interface FileStorage {
   leer(ruta: string): Promise<Buffer>;
   /** URL pública de la imagen, o null si la carpeta es privada (documentos). */
   urlPublica(ruta: string): string | null;
+  /** Ruta (clave del objeto) a partir de una URL pública de este almacenamiento; null si es ajena. */
+  rutaDesdeUrl(url: string): string | null;
+  /** Borra un archivo; no falla si ya no existe. */
+  eliminar(ruta: string): Promise<void>;
+  /** Recorre los archivos de una carpeta (para detectar huérfanos en disco). */
+  listar(carpeta: CarpetaArchivos): AsyncIterable<{ ruta: string; modificadoEn: Date }>;
 }

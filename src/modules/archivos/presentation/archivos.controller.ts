@@ -2,7 +2,8 @@ import { Controller, Post, UploadedFile, UseGuards, UseInterceptors } from '@nes
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { Roles } from '../../../shared/infrastructure/security/decorators';
+import { AuthUser } from '../../../shared/domain/auth-user';
+import { CurrentUser, Roles } from '../../../shared/infrastructure/security/decorators';
 import { JwtAuthGuard } from '../../../shared/infrastructure/security/jwt-auth.guard';
 import { RolesGuard } from '../../../shared/infrastructure/security/roles.guard';
 import { SubirArchivoUseCase } from '../application/subir-archivo.use-case';
@@ -29,8 +30,8 @@ export class ArchivosController {
   @ApiConsumes('multipart/form-data')
   @ApiBody(cuerpoMultipart)
   @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: 5 * MB, files: 1 } }))
-  subirImagen(@UploadedFile() archivo: Express.Multer.File | undefined) {
-    return this.subirArchivo.execute({ contenido: archivo?.buffer, categoria: 'IMAGEN' });
+  subirImagen(@UploadedFile() archivo: Express.Multer.File | undefined, @CurrentUser() user: AuthUser) {
+    return this.subirArchivo.execute({ idUsuario: user.idUsuario, contenido: archivo?.buffer, categoria: 'IMAGEN' });
   }
 
   /**
@@ -42,7 +43,7 @@ export class ArchivosController {
   @ApiConsumes('multipart/form-data')
   @ApiBody(cuerpoMultipart)
   @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: 8 * MB, files: 1 } }))
-  subirDocumento(@UploadedFile() archivo: Express.Multer.File | undefined) {
-    return this.subirArchivo.execute({ contenido: archivo?.buffer, categoria: 'DOCUMENTO' });
+  subirDocumento(@UploadedFile() archivo: Express.Multer.File | undefined, @CurrentUser() user: AuthUser) {
+    return this.subirArchivo.execute({ idUsuario: user.idUsuario, contenido: archivo?.buffer, categoria: 'DOCUMENTO' });
   }
 }

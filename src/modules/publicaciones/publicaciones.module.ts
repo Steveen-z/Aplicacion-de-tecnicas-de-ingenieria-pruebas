@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ArchivosModule } from '../archivos/archivos.module';
 import { ActualizarPrecioUseCase } from './application/actualizar-precio.use-case';
 import { CambiarEstadoUseCase } from './application/cambiar-estado.use-case';
 import { CrearPublicacionUseCase } from './application/crear-publicacion.use-case';
@@ -20,6 +21,7 @@ import { PrismaPublicacionRepository } from './infrastructure/prisma-publicacion
 import { PublicacionesController } from './presentation/publicaciones.controller';
 
 @Module({
+  imports: [ArchivosModule],
   controllers: [PublicacionesController],
   providers: [
     ListarPublicacionesUseCase,

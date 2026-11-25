@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { NotFoundError } from '../../../shared/domain/errors';
+import { BusinessRuleError, NotFoundError } from '../../../shared/domain/errors';
 import { PrismaService } from '../../../shared/infrastructure/prisma/prisma.service';
-import { big, dec, num } from '../../../shared/infrastructure/prisma/prisma-helpers';
+import { big, dec, esViolacionFk, num } from '../../../shared/infrastructure/prisma/prisma-helpers';
 import {
   CambioPrecio,
   CambiosPublicacion,
@@ -43,6 +43,13 @@ const ORDEN: Record<Exclude<OrdenPublicaciones, 'DISTANCIA'>, Prisma.Publicacion
 /** Tope de candidatas de una búsqueda por cercanía (protege memoria y tiempo de respuesta). */
 const MAX_CANDIDATAS = 2000;
 
+function traducirArchivoNoDisponible(error: unknown): never {
+  if (esViolacionFk(error)) {
+    throw new BusinessRuleError('Una de las imágenes ya no está disponible; súbela de nuevo');
+  }
+  throw error;
+}
+
 function conDistancia(resumen: PublicacionResumen, metros: number | undefined): PublicacionResumen {
   return metros === undefined ? resumen : { ...resumen, distanciaKm: Math.round(metros / 100) / 10 };
 }
@@ -53,29 +60,34 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
 
   async crear(datos: NuevaPublicacion): Promise<Publicacion> {
     const { terreno, ubicacion } = datos;
-    const row = await this.prisma.publicacion.create({
-      data: {
-        idVendedor: big(datos.idVendedor),
-        titulo: datos.titulo,
-        descripcion: datos.descripcion,
-        tipoOperacion: datos.tipoOperacion,
-        tipoPropiedad: datos.tipoPropiedad,
-        ...(datos.casa ?? {}),
-        precio: datos.precio,
-        estado: 'ACTIVA',
-        terreno: { create: { ...terreno, ubicacion: { create: { ...ubicacion } } } },
-        fotografias: {
-          create: datos.fotografias.map((f, i) => ({
-            urlImagen: f.urlImagen,
-            descripcion: f.descripcion,
-            orden: i + 1,
-            esPortada: f.esPortada,
-          })),
+    try {
+      const row = await this.prisma.publicacion.create({
+        data: {
+          idVendedor: big(datos.idVendedor),
+          titulo: datos.titulo,
+          descripcion: datos.descripcion,
+          tipoOperacion: datos.tipoOperacion,
+          tipoPropiedad: datos.tipoPropiedad,
+          ...(datos.casa ?? {}),
+          precio: datos.precio,
+          estado: 'ACTIVA',
+          terreno: { create: { ...terreno, ubicacion: { create: { ...ubicacion } } } },
+          fotografias: {
+            create: datos.fotografias.map((f, i) => ({
+              urlImagen: f.urlImagen,
+              ruta: f.ruta,
+              descripcion: f.descripcion,
+              orden: i + 1,
+              esPortada: f.esPortada,
+            })),
+          },
         },
-      },
-      include: publicacionInclude,
-    });
-    return aPublicacion(row);
+        include: publicacionInclude,
+      });
+      return aPublicacion(row);
+    } catch (error) {
+      traducirArchivoNoDisponible(error);
+    }
   }
 
   async buscarPorId(idPublicacion: number): Promise<Publicacion | null> {
@@ -282,13 +294,14 @@ export class PrismaPublicacionRepository implements PublicacionRepository {
         data: fotos.map((f, i) => ({
           idPublicacion: id,
           urlImagen: f.urlImagen,
+          ruta: f.ruta,
           descripcion: f.descripcion,
           orden: ordenBase + i + 1,
           esPortada: i === indicePortada,
         })),
       });
       return tx.fotografia.findMany({ where: { idPublicacion: id }, orderBy: { orden: 'asc' } });
-    });
+    }).catch(traducirArchivoNoDisponible);
     return filas.map(aFotografia);
   }
 

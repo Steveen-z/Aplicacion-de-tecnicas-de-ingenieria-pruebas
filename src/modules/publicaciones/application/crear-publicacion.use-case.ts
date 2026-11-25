@@ -4,11 +4,12 @@ import { BusinessRuleError, ForbiddenError } from '../../../shared/domain/errors
 import {
   DatosCasa,
   DatosTerreno,
-  NuevaFotografia,
+  FotografiaEntrada,
   Publicacion,
   TipoOperacion,
   TipoPropiedad,
 } from '../domain/publicacion';
+import { ResolverArchivosService } from '../../archivos/application/resolver-archivos.service';
 import { PUBLICACION_REPOSITORY, PublicacionRepository } from '../domain/publicacion.repository';
 import {
   MAX_FOTOGRAFIAS,
@@ -35,13 +36,16 @@ export interface CrearPublicacionInput {
     latitud: number | null;
     longitud: number | null;
   };
-  fotografias: NuevaFotografia[];
+  fotografias: FotografiaEntrada[];
 }
 
 /** P08 - Publicar inmueble mediante formulario por pasos. */
 @Injectable()
 export class CrearPublicacionUseCase {
-  constructor(@Inject(PUBLICACION_REPOSITORY) private readonly repo: PublicacionRepository) {}
+  constructor(
+    @Inject(PUBLICACION_REPOSITORY) private readonly repo: PublicacionRepository,
+    private readonly archivos: ResolverArchivosService,
+  ) {}
 
   async execute(input: CrearPublicacionInput): Promise<Publicacion> {
     if (input.user.idVendedor === null) {
@@ -69,7 +73,9 @@ export class CrearPublicacionUseCase {
 
     // Exactamente una portada: la primera marcada, o la primera foto si ninguna lo está.
     const indicePortada = Math.max(0, input.fotografias.findIndex((f) => f.esPortada));
-    const fotografias = input.fotografias.map((f, i) => ({ ...f, esPortada: i === indicePortada }));
+    // Solo imágenes subidas a la plataforma por este vendedor (422 si no, 403 si son de otro).
+    const rutas = await this.archivos.resolverImagenes(input.user.idUsuario, input.fotografias.map((f) => f.urlImagen));
+    const fotografias = input.fotografias.map((f, i) => ({ ...f, ruta: rutas[i].ruta, esPortada: i === indicePortada }));
 
     return this.repo.crear({
       idVendedor: input.user.idVendedor,

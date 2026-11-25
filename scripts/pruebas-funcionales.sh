@@ -121,6 +121,8 @@ check F08 "Cliente con requisitos completos ($S1) -> rol VENDEDOR" '[ "$S1" = 20
 
 echo "== P04/P05/P06/P07 publicaciones =="
 subir /archivos/imagenes "$TOK_VEN" "$TMP/foto.jpg"; S1="$STATUS"; URL="$(j .url)"
+# Cada vendedor usa sus propias imágenes (no se puede adjuntar la imagen de otro usuario)
+SALVA_STATUS="$S1"; subir /archivos/imagenes "$TOK_VEN2" "$TMP/foto.jpg"; URL2="$(j .url)"; S1="$SALVA_STATUS"
 subir /archivos/imagenes "$TOK_VEN" "$TMP/falso.jpg"
 check F13 "Subir JPG real ($S1) / PHP renombrado -> 201 / 422 (rechazado por firma)" '[ "$S1" = 201 ] && [ "$STATUS" = 422 ]'
 
@@ -129,11 +131,11 @@ PUB1="$(j .idPublicacion)"
 check F09 "Vendedor crea publicación -> 201, estado definido" '[ "$STATUS" = 201 ] && [ "$(j .estado)" != null ]'
 req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Terreno en Usulután $SUF" VENTA 40000 "Usulután" 1000 "$URL")"
 PUB2="$(j .idPublicacion)"
-req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno en La Unión $SUF" VENTA 15000 "La Unión" 300 "$URL")"
+req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno en La Unión $SUF" VENTA 15000 "La Unión" 300 "$URL2")"
 PUB3="$(j .idPublicacion)"
-req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno renta Morazán $SUF" RENTA 300 "Morazán" 800 "$URL")"
+req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno renta Morazán $SUF" RENTA 300 "Morazán" 800 "$URL2")"
 PUB4="$(j .idPublicacion)"
-req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno en San Miguel B $SUF" VENTA 18000 "San Miguel" 450 "$URL")"
+req POST /publicaciones "$TOK_VEN2" "$(publicacion_json "Terreno en San Miguel B $SUF" VENTA 18000 "San Miguel" 450 "$URL2")"
 PUB5="$(j .idPublicacion)"
 
 req POST /publicaciones "$TOK_CLI" "$(publicacion_json "Intento cliente $SUF" VENTA 1000 "San Miguel" 100 "$URL")"
@@ -390,6 +392,41 @@ req PATCH "/publicaciones/$PUB_MEDIO" "$TOK_VEN" '{"casa":{"habitaciones":2}}'; 
 req PATCH "/publicaciones/$CASA1" "$TOK_VEN" '{"tipoPropiedad":"LOTE"}'; D="$STATUS"
 check F47 "Comparar CASA con TERRENO ($A) / dos casas ($B, $RES); casa en un terreno ($C); cambiar tipo ($D) -> 422/201/422/400" \
   '[ "$A" = 422 ] && [ "$B" = 201 ] && echo "$RES" | jq -e ".masHabitaciones == $CASA2 and .mayorAreaConstruida == $CASA2" >/dev/null && [ "$C" = 422 ] && [ "$D" = 400 ]'
+
+echo "== Fase 2: archivos robustos =="
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Foto externa $SUF" VENTA 1000 "San Miguel" 100 "https://otro-sitio.example/foto.jpg")"; A="$STATUS"
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Foto inventada $SUF" VENTA 1000 "San Miguel" 100 "http://localhost:3000/uploads/imagenes/a.jpg")"; B="$STATUS"
+check F38 "Imagen externa ($A) o URL inventada del propio servidor ($B) -> 422" '[ "$A" = 422 ] && [ "$B" = 422 ]'
+
+req POST /publicaciones "$TOK_VEN" "$(publicacion_json "Foto ajena $SUF" VENTA 1000 "San Miguel" 100 "$URL2")"; A="$STATUS"
+req POST "/publicaciones/$CASA2/fotografias" "$TOK_VEN" "{\"fotografias\":[{\"urlImagen\":\"$URL2\"}]}"; B="$STATUS"
+check F39 "Usar la imagen que subió otro vendedor al crear ($A) y al agregar fotos ($B) -> 403" '[ "$A" = 403 ] && [ "$B" = 403 ]'
+
+# Vendedor 3: el cliente convertido en F08 (la sesión del vendedor 2 se cerró al bloquearlo en F27)
+subir /archivos/documentos "$TOK_CLI2" "$TMP/doc.pdf"; RUTA2="$(j .ruta)"
+req POST /publicaciones "$TOK_CLI2" "$(publicacion_json "Documento como foto $SUF" VENTA 1000 "San Miguel" 100 "http://localhost:3000/uploads/$RUTA2")"; A="$STATUS"
+req POST /vendedores/me/documentos "$TOK_VEN" "{\"tipoDocumento\":\"DUI_REVERSO\",\"rutaDocumento\":\"$RUTA2\"}"; B="$STATUS"
+req POST /vendedores/me/documentos "$TOK_CLI2" "{\"tipoDocumento\":\"DUI_REVERSO\",\"rutaDocumento\":\"$RUTA2\"}"; C="$STATUS"
+check F40 "Documento usado como foto ($A); documento ajeno en verificación ($B); propio ($C) -> 422/403/201" '[ "$A" = 422 ] && [ "$B" = 403 ] && [ "$C" = 201 ]'
+
+# F56: limpieza de huérfanos. Opcional porque borra archivos sin uso de más de 24 h de la base local.
+if [ "${PRUEBA_LIMPIEZA:-0}" = 1 ] && command -v psql >/dev/null; then
+  DBURL="$(grep -E '^DATABASE_URL=' .env | cut -d= -f2- | tr -d '"' | sed 's/?schema=public//')"
+  subir /archivos/imagenes "$TOK_VEN" "$TMP/foto.jpg"; HUERFANA="$(j .url)"; RUTA_H="$(j .ruta)"
+  psql "$DBURL" -qAtc "UPDATE archivos SET fecha = now() - interval '25 hours' WHERE ruta = '$RUTA_H'"
+  A="$(curl -s -o /dev/null -w '%{http_code}' "$HUERFANA")"
+  SIM="$(npm run -s archivos:limpiar -- --simulacion)"
+  B="$(curl -s -o /dev/null -w '%{http_code}' "$HUERFANA")"
+  REAL="$(npm run -s archivos:limpiar)"
+  C="$(curl -s -o /dev/null -w '%{http_code}' "$HUERFANA")"
+  REPITE="$(npm run -s archivos:limpiar)"
+  req GET "/publicaciones/$CASA1"; FOTO_EN_USO="$(curl -s -o /dev/null -w '%{http_code}' "$(j '.fotografias[0].urlImagen')")"
+  STATUS="$C"; BODY="$SIM | $REAL | $REPITE"
+  check F56 "Limpieza: huérfana antes $A, tras simulación $B, tras limpiar $C; foto en uso $FOTO_EN_USO; repetir no borra" \
+    '[ "$A" = 200 ] && [ "$B" = 200 ] && [ "$C" = 404 ] && [ "$FOTO_EN_USO" = 200 ] && echo "$SIM" | grep -q "simulacion=true" && echo "$REPITE" | grep -q "borrados=0"'
+else
+  echo "OMITIDA F56  limpieza de archivos (ejecutar con PRUEBA_LIMPIEZA=1 y psql disponible)"
+fi
 
 echo
 echo "Resultado: $PASS aprobadas, $FAIL fallidas ($(date -u +%Y-%m-%dT%H:%MZ))"
