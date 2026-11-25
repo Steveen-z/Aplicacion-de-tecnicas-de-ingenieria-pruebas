@@ -151,6 +151,9 @@ model Ubicacion {
   longitud         Decimal? @db.Decimal(10, 7)
   latitudPublica   Decimal? @map("latitud_publica") @db.Decimal(10, 7)
   longitudPublica  Decimal? @map("longitud_publica") @db.Decimal(10, 7)
+  /// Columnas generadas por PostgreSQL (migracion 002); solo se consultan con $queryRaw.
+  puntoPublico     Unsupported("geography(Point,4326)")? @map("punto_publico")
+  puntoExacto      Unsupported("geography(Point,4326)")? @map("punto_exacto")
 
   terreno Terreno @relation(fields: [idTerreno], references: [id], onDelete: Cascade)
 

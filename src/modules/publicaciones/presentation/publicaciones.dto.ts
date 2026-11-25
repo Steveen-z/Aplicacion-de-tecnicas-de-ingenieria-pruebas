@@ -13,16 +13,18 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../shared/infrastructure/http/pagination-query.dto';
+import { RADIO_MAX_KM, RADIO_MIN_KM } from '../domain/publicacion';
 import { MAX_FOTOGRAFIAS } from '../domain/publicacion.rules';
 
 const recortar = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
 const ESTADOS = ['ACTIVA', 'PAUSADA', 'VENDIDA', 'RENTADA', 'PENDIENTE', 'RECHAZADA'] as const;
 const OPERACIONES = ['VENTA', 'RENTA'] as const;
-const ORDENES = ['RECIENTES', 'PRECIO_ASC', 'PRECIO_DESC', 'AREA_ASC', 'AREA_DESC'] as const;
+const ORDENES = ['RECIENTES', 'PRECIO_ASC', 'PRECIO_DESC', 'AREA_ASC', 'AREA_DESC', 'DISTANCIA'] as const;
 
 const DECIMAL_2 = { maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false } as const;
 const MAX_PRECIO = 9_999_999_999.99; // NUMERIC(12,2)
@@ -56,6 +58,24 @@ export class FiltroPublicacionesDto extends PaginationQueryDto {
   @IsOptional() @Transform(recortar) @IsString() @MaxLength(100)
   q?: string;
 
+  /**
+   * Búsqueda por cercanía: centro (lat, lng) y radio en km. Se envían los tres juntos.
+   * La distancia se mide contra el punto público (aproximado a ~1 km), por lo que es aproximada.
+   */
+  @ValidateIf((o: FiltroPublicacionesDto) => o.lng !== undefined || o.radioKm !== undefined || o.orden === 'DISTANCIA')
+  @Type(() => Number) @IsNumber({}, { message: 'lat es obligatoria al buscar por cercanía u ordenar por distancia' }) @Min(-90) @Max(90)
+  lat?: number;
+
+  @ValidateIf((o: FiltroPublicacionesDto) => o.lat !== undefined || o.radioKm !== undefined || o.orden === 'DISTANCIA')
+  @Type(() => Number) @IsNumber({}, { message: 'lng es obligatoria al buscar por cercanía u ordenar por distancia' }) @Min(-180) @Max(180)
+  lng?: number;
+
+  @ValidateIf((o: FiltroPublicacionesDto) => o.lat !== undefined || o.lng !== undefined || o.orden === 'DISTANCIA')
+  @Type(() => Number) @IsNumber({}, { message: 'radioKm es obligatorio al buscar por cercanía u ordenar por distancia' })
+  @Min(RADIO_MIN_KM) @Max(RADIO_MAX_KM)
+  radioKm?: number;
+
+  /** DISTANCIA exige lat, lng y radioKm. */
   @IsOptional() @IsIn(ORDENES)
   orden: (typeof ORDENES)[number] = 'RECIENTES';
 }

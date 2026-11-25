@@ -72,6 +72,11 @@ export interface PublicacionResumen {
   distrito: string | null;
   portadaUrl: string | null;
   fechaPublicacion: Date;
+  /** Punto PÚBLICO (aproximado) para el marcador del mapa; nunca el exacto. */
+  latitud: number | null;
+  longitud: number | null;
+  /** Distancia en km al centro de búsqueda (solo cuando se busca por cercanía). */
+  distanciaKm: number | null;
 }
 
 export interface CambioPrecio {
@@ -81,7 +86,17 @@ export interface CambioPrecio {
   fechaCambio: Date;
 }
 
-export type OrdenPublicaciones = 'RECIENTES' | 'PRECIO_ASC' | 'PRECIO_DESC' | 'AREA_ASC' | 'AREA_DESC';
+export type OrdenPublicaciones = 'RECIENTES' | 'PRECIO_ASC' | 'PRECIO_DESC' | 'AREA_ASC' | 'AREA_DESC' | 'DISTANCIA';
+
+/** Búsqueda por cercanía (documento de arquitectura: centro + radio con PostGIS). */
+export interface Cercania {
+  latitud: number;
+  longitud: number;
+  radioKm: number;
+}
+
+export const RADIO_MIN_KM = 0.1;
+export const RADIO_MAX_KM = 50;
 
 export interface FiltroPublicaciones {
   departamento?: string;
@@ -92,6 +107,7 @@ export interface FiltroPublicaciones {
   areaMin?: number;
   areaMax?: number;
   q?: string;
+  cercania?: Cercania;
   orden: OrdenPublicaciones;
 }
 

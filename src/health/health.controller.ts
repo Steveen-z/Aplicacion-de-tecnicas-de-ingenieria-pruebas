@@ -37,9 +37,19 @@ export class HealthController {
       );
     }
 
+    // Búsqueda por cercanía y mapa dependen de PostGIS (migración 002).
+    const postgis = await this.prisma.$queryRaw<{ extversion: string }[]>`
+      SELECT extversion FROM pg_extension WHERE extname = 'postgis'`;
+    if (postgis.length === 0) {
+      throw new ServiceUnavailableException(
+        'PostGIS no está instalado en la base de datos. Instálalo (Stack Builder > Spatial Extensions) y ejecuta npm run db:migrar',
+      );
+    }
+
     return {
       estado: 'ok',
       baseDeDatos: 'conectada',
+      postgis: postgis[0].extversion,
       esquema: aplicadas,
       fecha: new Date().toISOString(),
     };

@@ -98,5 +98,8 @@ export function aResumen(row: ResumenRow): PublicacionResumen {
     distrito: terreno.ubicacion.distrito,
     portadaUrl: row.fotografias[0]?.urlImagen ?? null,
     fechaPublicacion: row.fechaPublicacion,
+    latitud: terreno.ubicacion.latitudPublica === null ? null : dec(terreno.ubicacion.latitudPublica),
+    longitud: terreno.ubicacion.longitudPublica === null ? null : dec(terreno.ubicacion.longitudPublica),
+    distanciaKm: null,
   };
 }

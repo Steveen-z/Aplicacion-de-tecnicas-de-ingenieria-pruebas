@@ -74,12 +74,14 @@ export class PublicacionesController {
 
   // ------------------------------------------------------------- Consulta
 
-  /** P04 + P05 - Listado público de publicaciones activas con filtros opcionales. */
+  /** P04 + P05 - Listado público de publicaciones activas: filtros, búsqueda por cercanía y coordenadas públicas para el mapa. */
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   listarActivas(@Query() query: FiltroPublicacionesDto, @CurrentUser() user?: AuthUser) {
-    const { page, limit, ...filtro } = query;
-    return this.listar.execute({ filtro, page, limit, autenticado: user !== undefined });
+    const { page, limit, lat, lng, radioKm, ...filtro } = query;
+    const cercania =
+      lat !== undefined && lng !== undefined && radioKm !== undefined ? { latitud: lat, longitud: lng, radioKm } : undefined;
+    return this.listar.execute({ filtro: { ...filtro, cercania }, page, limit, autenticado: user !== undefined });
   }
 
   /** Publicaciones del vendedor autenticado (cualquier estado). Debe ir antes de ':id'. */
