@@ -29,3 +29,16 @@ it('cada migración tiene número único, guarda de versión, registro y transac
     assert.ok(sql.includes(`INSERT INTO schema_migraciones (version, nombre) VALUES ('${v}'`), `${f}: no se registra`);
   }
 });
+
+// ---- Healthcheck: migraciones requeridas por el código
+// eslint-disable-next-line import/first
+import { migracionesPendientes, migracionesRequeridas } from '../src/health/esquema';
+
+it('health: las migraciones requeridas salen de db/migraciones y se detectan las pendientes', () => {
+  const requeridas = migracionesRequeridas(carpeta);
+  assert.ok(requeridas && requeridas[0] === '001');
+  assert.deepEqual(migracionesPendientes(['001', '002'], ['001']), ['002']);
+  assert.deepEqual(migracionesPendientes(['001'], ['001']), []);
+  assert.deepEqual(migracionesPendientes(null, []), []); // sin carpeta no se comprueba
+  assert.equal(migracionesRequeridas(join(carpeta, 'no-existe')), null);
+});

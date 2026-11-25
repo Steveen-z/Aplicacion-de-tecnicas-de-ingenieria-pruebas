@@ -7,6 +7,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { accesoLogMiddleware, requestIdMiddleware } from './shared/infrastructure/http/request-id.middleware';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -16,6 +17,9 @@ async function bootstrap(): Promise<void> {
   if (config.get<string>('TRUST_PROXY') === 'true') {
     app.set('trust proxy', 1);
   }
+
+  app.use(requestIdMiddleware);
+  app.use(accesoLogMiddleware);
 
   // Las imágenes se sirven a un frontend en otro origen, por eso CORP "cross-origin".
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -27,7 +31,8 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: origenes,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id'],
     maxAge: 600,
   });
 
