@@ -32,7 +32,9 @@ function salir(mensaje, codigo = 1) {
 }
 
 function psql(url, args, { silencioso = false } = {}) {
-  const r = spawnSync('psql', [url, '-v', 'ON_ERROR_STOP=1', '-X', '-q', ...args], {
+  // La URL va con -d y antes que el resto: el psql de Windows deja de leer opciones al
+  // encontrar el primer argumento posicional, así que con la URL suelta ignoraba -c y -f.
+  const r = spawnSync('psql', ['-d', url, '-v', 'ON_ERROR_STOP=1', '-X', '-q', ...args], {
     encoding: 'utf8',
     stdio: silencioso ? 'pipe' : ['ignore', 'inherit', 'pipe'],
   });
@@ -81,6 +83,9 @@ if (args[0] === '--baseline') {
      INSERT INTO schema_migraciones (version, nombre) VALUES ('${version}', '${nombre}') ON CONFLICT (version) DO NOTHING;`,
   ]);
   if (r.status !== 0) salir(r.stderr.trim());
+  if (!versionesAplicadas(url).has(version)) {
+    salir(`psql terminó sin error pero la migración ${version} no quedó registrada`);
+  }
   console.log(`Migración ${version} marcada como aplicada (baseline).`);
   process.exit(0);
 }
@@ -115,6 +120,11 @@ for (const m of pendientes) {
   if (r.status !== 0) {
     console.log('ERROR');
     salir(`falló ${m.archivo}; no se aplicó nada de esa migración:\n${r.stderr.trim()}`);
+  }
+  // Comprobación explícita: no basta con que psql termine sin error.
+  if (!versionesAplicadas(url).has(m.version)) {
+    console.log('ERROR');
+    salir(`psql terminó sin error pero ${m.archivo} no quedó registrada en schema_migraciones.\n${r.stderr.trim()}`);
   }
   console.log('ok');
 }
